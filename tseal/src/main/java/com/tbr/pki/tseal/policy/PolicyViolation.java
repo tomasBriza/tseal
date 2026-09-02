@@ -1,0 +1,18 @@
+package com.tbr.pki.tseal.policy;
+
+public record PolicyViolation(String field, String message) {
+
+    public PolicyViolation {
+        if (field == null || field.isBlank()) {
+            throw new IllegalArgumentException("field");
+        }
+        if (message == null || message.isBlank()) {
+            throw new IllegalArgumentException("message");
+        }
+    }
+
+    @Override
+    public String toString() {
+        return field + ": " + message;
+    }
+}
