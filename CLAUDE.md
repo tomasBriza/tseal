@@ -17,7 +17,7 @@ JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew :tseal:test --tests "
 JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew publishToMavenLocal
 ```
 
-CI: `.github/workflows/build.yml` runs `./gradlew test` on Temurin 25 for every push and pull request. JUnit results are published on the workflow run; Gradle HTML reports are uploaded as the `test-reports` artifact.
+CI: `.github/workflows/build.yml` runs `./gradlew build` on Temurin 25 for every push and pull request (compile, jar, tests). JUnit results are published on the workflow run; Gradle HTML reports are uploaded as the `test-reports` artifact.
 
 ## Technical Setup
 
