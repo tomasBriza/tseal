@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      checks: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
 
@@ -25,3 +27,21 @@ jobs:
 
       - name: Test
         run: ./gradlew --no-daemon test
+
+      - name: Publish test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: |
+            **/build/test-results/test/TEST-*.xml
+          check_name: Test results
+
+      - name: Upload HTML test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            tseal/build/reports/tests/test/
+            tseal-policy-json/build/reports/tests/test/
+          if-no-files-found: error
