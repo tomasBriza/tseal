@@ -17,6 +17,8 @@ JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew :tseal:test --tests "
 JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew publishToMavenLocal
 ```
 
+CI: `.github/workflows/build.yml` runs `./gradlew test` on Temurin 25 for every push and pull request.
+
 ## Technical Setup
 
 - **Language**: Java 25 (Temurin-25 at `~/.jdks/temurin-25.0.3`)

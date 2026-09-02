@@ -1,5 +1,8 @@
 # Project tSeal
 
+[![Build](https://github.com/tomasBriza/tseal/actions/workflows/build.yml/badge.svg)](https://github.com/tomasBriza/tseal/actions/workflows/build.yml)
+
+
 A small Java PKI library — a wrapper for Bouncy Castle — that simplifies certificate issuance, signing, and verification.
 
 The goal is **not** a full-blown PKI product, but a small, easy-to-use, hard-to-misuse tool with minimal dependencies (Bouncy Castle only). It exposes a fluent, type-safe API with safe defaults and prebuilt policies for the common cases, while staying customizable.
