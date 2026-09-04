@@ -2,12 +2,16 @@ package com.tbr.pki.tseal.policy.json;
 
 import com.tbr.pki.tseal.csr.CsrBuilder;
 import com.tbr.pki.tseal.csr.CsrResult;
-import com.tbr.pki.tseal.csr.KeyAlgorithm;
-import com.tbr.pki.tseal.csr.KeyPairFactory;
+import com.tbr.pki.tseal.key.KeyAlgorithm;
+import com.tbr.pki.tseal.key.KeyPairFactory;
 import com.tbr.pki.tseal.policy.IssuancePolicy;
 import com.tbr.pki.tseal.policy.PolicyBuilder;
-import com.tbr.pki.tseal.policy.PolicyCodec;
 import com.tbr.pki.tseal.policy.ValidityRule;
+import com.tbr.pki.tseal.policy.restriction.RestrictionOutcome;
+import com.tbr.pki.tseal.policy.restriction.RestrictionRule;
+import com.tbr.pki.tseal.policy.restriction.RestrictionRules;
+import com.tbr.pki.tseal.policy.snapshot.PolicyCodec;
+
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERPrintableString;
 import org.bouncycastle.asn1.x509.KeyPurposeId;
@@ -18,9 +22,11 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.time.Duration;
+import java.util.Map;
 
 import static com.tbr.pki.tseal.policy.Rules.exactly;
 import static com.tbr.pki.tseal.policy.Rules.fromCsr;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -134,9 +140,76 @@ class JsonPolicyCodecTest {
     @Test
     void unknownVersion_rejected() {
         String jsonDoc = """
-                { "version": 2, "validity": { "mode": "exactly", "exact": "P90D" } }
+                { "version": 3, "validity": { "mode": "exactly", "exact": "P90D" } }
                 """;
         assertThrows(IllegalArgumentException.class, () -> json.read(jsonDoc));
+    }
+
+    @Test
+    void version1_matchingStillLoads() {
+        String jsonDoc = """
+                {
+                  "version": 1,
+                  "subject": { "CN": { "mode": "fromCsr", "optional": true } },
+                  "san": { "dns": { "mode": "fromCsr", "optional": true, "matching": ".*\\\\.acme\\\\.com" } },
+                  "atLeastOneSan": true,
+                  "validity": { "mode": "exactly", "exact": "P90D" },
+                  "keyUsage": { "adaptive": true },
+                  "basicConstraints": { "endEntity": true }
+                }
+                """;
+        IssuancePolicy policy = json.read(jsonDoc);
+        CsrResult ok = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
+        CsrResult bad = CsrBuilder.httpsCsr().dns("app.evil.com").build(kp);
+        assertDoesNotThrow(() -> policy.check(ok.request()));
+        assertThrows(Exception.class, () -> policy.check(bad.request()));
+    }
+
+    @Test
+    void registeredRestriction_roundTrip() {
+        RestrictionRule endsAcme = v -> v != null && v.endsWith(".acme.com")
+                ? RestrictionOutcome.allow()
+                : RestrictionOutcome.reject("value.suffix", "must end with .acme.com");
+        RestrictionRules.register("endsAcme", endsAcme);
+        try {
+            IssuancePolicy original = PolicyBuilder.httpsPolicy()
+                    .dns(fromCsr().restrict(RestrictionRules.create("endsAcme", Map.of())))
+                    .build();
+            IssuancePolicy restored = json.read(json.write(original));
+            CsrResult ok = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
+            CsrResult bad = CsrBuilder.httpsCsr().dns("nope.example.com").build(kp);
+            assertDoesNotThrow(() -> restored.check(ok.request()));
+            assertThrows(Exception.class, () -> restored.check(bad.request()));
+            assertEquals("endsAcme", restored.snapshot().san().get("dns").restrictions().getFirst().type());
+        } finally {
+            RestrictionRules.unregister("endsAcme");
+        }
+    }
+
+    @Test
+    void extends_mergesSubjectOverlay() {
+        JsonPolicyCodec codec = new JsonPolicyCodec();
+        String base = codec.write(PolicyBuilder.httpsPolicy().build());
+        String overlay = """
+                {
+                  "version": 2,
+                  "extends": "base",
+                  "subject": { "O": { "mode": "exactly", "exact": "Acme West" } }
+                }
+                """;
+        IssuancePolicy policy = codec.read(overlay, id -> base);
+        assertEquals("Acme West", policy.snapshot().subject().get("O").exact());
+        assertTrue(policy.snapshot().san().containsKey("dns"));
+        CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
+        assertDoesNotThrow(() -> policy.check(csr.request()));
+    }
+
+    @Test
+    void extends_withoutResolver_rejected() {
+        String overlay = """
+                { "version": 2, "extends": "base", "validity": { "mode": "exactly", "exact": "P90D" } }
+                """;
+        assertThrows(IllegalArgumentException.class, () -> json.read(overlay));
     }
 
     @Test

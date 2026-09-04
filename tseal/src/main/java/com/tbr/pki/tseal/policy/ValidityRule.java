@@ -5,15 +5,15 @@ import java.util.Objects;
 
 public final class ValidityRule {
 
-    enum Mode { FROM_CSR, EXACTLY, FORBIDDEN }
+    public enum Mode { FROM_CSR, EXACTLY, FORBIDDEN }
 
-    final Mode mode;
-    final boolean optional;
-    final boolean orCaller;
-    final Duration exactValue;
-    final Duration defaultValue;
-    final Duration min;
-    final Duration max;
+    public final Mode mode;
+    public final boolean optional;
+    public final boolean orCaller;
+    public final Duration exactValue;
+    public final Duration defaultValue;
+    public final Duration min;
+    public final Duration max;
 
     private ValidityRule(
             Mode mode,
@@ -44,7 +44,7 @@ public final class ValidityRule {
         return new ValidityRule(Mode.FORBIDDEN, false, false, null, null, null, null);
     }
 
-    static ValidityRule fromSnapshot(String mode, boolean optional, boolean orCaller,
+    public static ValidityRule fromSnapshot(String mode, boolean optional, boolean orCaller,
                                      String exact, String orDefault, String min, String max) {
         ValidityRule rule = switch (parseMode(mode)) {
             case FROM_CSR -> fromCsr();
@@ -69,7 +69,7 @@ public final class ValidityRule {
         return rule;
     }
 
-    static Mode parseMode(String mode) {
+    public static Mode parseMode(String mode) {
         if (mode == null || mode.isBlank()) {
             throw new IllegalArgumentException("validity rule mode is required");
         }
@@ -81,7 +81,7 @@ public final class ValidityRule {
         };
     }
 
-    static String modeName(Mode mode) {
+    public static String modeName(Mode mode) {
         return switch (mode) {
             case FROM_CSR -> "fromCsr";
             case EXACTLY -> "exactly";
@@ -89,7 +89,7 @@ public final class ValidityRule {
         };
     }
 
-    static String formatDuration(Duration duration) {
+    public static String formatDuration(Duration duration) {
         if (duration == null) {
             return null;
         }
@@ -103,7 +103,7 @@ public final class ValidityRule {
         return duration.toString();
     }
 
-    static Duration parseDuration(String value, String what) {
+    public static Duration parseDuration(String value, String what) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(what + " duration is required");
         }
@@ -134,7 +134,7 @@ public final class ValidityRule {
         return copy(mode, optional, orCaller, exactValue, defaultValue, min, requirePositive(max, "max"));
     }
 
-    void validateStatically() {
+    public void validateStatically() {
         if (min != null && max != null && min.compareTo(max) > 0) {
             throw new IllegalArgumentException("validity min must be <= max");
         }
@@ -145,7 +145,7 @@ public final class ValidityRule {
         checkRange(defaultValue);
     }
 
-    boolean inRange(Duration duration) {
+    public boolean inRange(Duration duration) {
         if (duration == null) {
             return false;
         }
@@ -158,7 +158,7 @@ public final class ValidityRule {
         return true;
     }
 
-    String rangeMessage(Duration duration) {
+    public String rangeMessage(Duration duration) {
         if (min != null && duration.compareTo(min) < 0) {
             return "below min " + min;
         }
@@ -174,7 +174,7 @@ public final class ValidityRule {
         }
     }
 
-    static Duration requirePositive(Duration duration, String what) {
+    public static Duration requirePositive(Duration duration, String what) {
         Objects.requireNonNull(duration, what);
         if (duration.isNegative() || duration.toSeconds() <= 0) {
             throw new IllegalArgumentException(what + " validity must be at least one second");

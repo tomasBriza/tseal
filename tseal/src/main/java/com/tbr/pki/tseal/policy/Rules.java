@@ -15,4 +15,9 @@ public final class Rules {
     public static FieldRule forbidden() {
         return FieldRule.forbid();
     }
+
+    /** Ignore the CSR; take caller and/or {@code orDefault}. */
+    public static FieldRule ignoreCsr() {
+        return FieldRule.ignoreCsrValues();
+    }
 }

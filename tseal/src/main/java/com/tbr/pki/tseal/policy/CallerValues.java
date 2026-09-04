@@ -2,18 +2,21 @@ package com.tbr.pki.tseal.policy;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class CallerValues {
 
-    String commonName;
-    String organization;
-    String organizationalUnit;
-    String country;
-    final List<String> dns = new ArrayList<>();
-    final List<String> ip = new ArrayList<>();
-    final List<String> email = new ArrayList<>();
-    Duration validity;
+    public String commonName;
+    public String organization;
+    public String organizationalUnit;
+    public String country;
+    public final List<String> dns = new ArrayList<>();
+    public final List<String> ip = new ArrayList<>();
+    public final List<String> email = new ArrayList<>();
+    public Duration validity;
+    public final Map<String, String> attrs = new LinkedHashMap<>();
 
     private CallerValues() {}
 
@@ -63,6 +66,15 @@ public final class CallerValues {
     public CallerValues validity(Duration lifetime) {
         this.validity = ValidityRule.requirePositive(lifetime, "caller");
         return this;
+    }
+
+    public CallerValues attr(String name, String value) {
+        attrs.put(requireText(name, "attr name"), requireText(value, "attr value"));
+        return this;
+    }
+
+    public String attr(String name) {
+        return attrs.get(name);
     }
 
     private static String requireText(String value, String what) {

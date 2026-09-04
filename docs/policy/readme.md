@@ -1,10 +1,11 @@
 # Certificate policy
 
 A fluent builder for **issuance policies**: the rules that say how a CSR becomes a
-certificate. This is Phase 1 step 2. It does not sign. Signing (step 3) will take a CSR plus
-an `IssuancePolicy` plus a PKCS provider.
+certificate. This is Phase 1 step 2. It does not sign. Issuance (step 3) takes a CSR plus
+an `IssuancePolicy` plus a CA key or `ContentSigner` — see [issue/readme.md](../issue/readme.md).
 
-Package: `com.tbr.pki.tseal.policy`
+Packages: `com.tbr.pki.tseal.policy` (façade + rules), `.builder`, `.restriction`,
+`.snapshot`, `.engine`. Issuance is `com.tbr.pki.tseal.issue`.
 
 The API has **three levels of input**, same shape as the CSR builder: a trivial preset, a
 full custom surface, and an escape hatch.
@@ -71,7 +72,7 @@ different artifact:
 └──────────────────────────┼────────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  PolicyAccumulator  (package-private, mutable)                │
+│  PolicyAccumulator  (policy.engine, mutable)                  │
 │  subject rules · SAN rules · CA-owned extensions · validity · │
 │  CRL / OCSP URIs · extra extensions · allow/ignore lists      │
 │                          │ freeze                             │
@@ -92,17 +93,19 @@ different artifact:
 - **`IssuancePolicy`** is the frozen artifact (`build()`), analogous to `CsrResult`.
   It is immutable and reusable across many CSRs.
 - **Engine** has no fluent surface. `check` is the public façade; `evaluate` is
-  package-private and is what the future signer will call. One path for “accept this CSR?”
-  and “materialize the certificate fields.”
+  what `CertificateIssuer` calls. One path for “accept this CSR?” and “materialize
+  the certificate fields.”
 
-Public types: `PolicyBuilder`, `IssuancePolicy`, `FieldRule`, `Rules`, `ValidityRule`,
-`CallerValues`, `PolicyViolationException`, `PolicyViolation`, `HttpsPolicyBuilder`
-(no type-state on presets), `ClientAuthPolicyBuilder`, `SigningPolicyBuilder`,
-`CustomPolicyStart`, `CustomPolicyBuildable`, `SubjectRuleBuilder`, `SanRuleBuilder`,
-`RawPolicy`.
-
-Package-private: `PolicyAccumulator`, `PolicyEngine`, `RawPolicyImpl`, `CustomPolicyBuilder`,
-`CsrView`, `Evaluation`.
+Façade (`policy`): `PolicyBuilder`, `IssuancePolicy`, `FieldRule`, `Rules`, `ValidityRule`,
+`CallerValues`, `PolicyViolationException`, `PolicyViolation`, `ViolationCodes`.
+Builders (`policy.builder`): `HttpsPolicyBuilder` (no type-state on presets),
+`ClientAuthPolicyBuilder`, `SigningPolicyBuilder`, `CustomPolicyStart`,
+`CustomPolicyBuildable`, `CustomPolicyBuilder`, `SubjectRuleBuilder`, `SanRuleBuilder`,
+`RawPolicy`, `RawPolicyImpl`.
+Restrictions (`policy.restriction`): `RestrictionRule`, `RestrictionRules`,
+`RestrictionOutcome`, `RestrictionSnapshot`.
+Snapshot (`policy.snapshot`): `PolicySnapshot`, `PolicyCodec`.
+Engine (`policy.engine`): `PolicyAccumulator`, `PolicyEngine`, `CsrView`, `Evaluation`.
 
 The type is named **`IssuancePolicy`**, not `CertificatePolicy`. In X.509,
 `CertificatePolicies` is an extension with policy OIDs. That extension, if needed, goes
@@ -270,16 +273,19 @@ public final class Rules {
     public static FieldRule fromCsr() { ... }
     public static FieldRule exactly(String value) { ... }
     public static FieldRule forbidden() { ... }
+    public static FieldRule ignoreCsr() { ... }
 }
 
 public final class FieldRule {
     public FieldRule optional();
     public FieldRule orCaller();
     public FieldRule orDefault(String value);
-    public FieldRule matching(String regex);   // java.util.regex, full match
+    public FieldRule matching(String regex);   // built-in RestrictionRule "regex"
     public FieldRule oneOf(String... allowed);
     public FieldRule maxLength(int n);
-    public FieldRule maxEntries(int n);        // SAN lists; ignored on single-value RDNs
+    public FieldRule restrict(RestrictionRule rule); // lambda, method ref, or registered type
+    public FieldRule minEntries(int n);
+    public FieldRule maxEntries(int n);        // subject and SAN; subject default max is 1
 }
 ```
 
@@ -293,6 +299,7 @@ Meaning of the factories:
 | `fromCsr().orDefault("x")` | used | `"x"` | CSR or default |
 | `fromCsr().orCaller().orDefault("x")` | used | caller, else `"x"` | CSR, caller, or default |
 | `exactly("x")` | **ignored** (not a violation) | n/a | always `"x"` |
+| `ignoreCsr().orCaller().orDefault("x")` | **ignored** | caller, else `"x"` | caller or default |
 | `forbidden()` | **fail** | ok | omitted |
 
 Fluent order of `orCaller()` / `orDefault()` / constraints does **not** change precedence.
@@ -314,7 +321,62 @@ SAN fields are lists. For `dns` / `ip` / `email`:
   validates each. Default applies only when the union is empty.
 - `exactly("a.example.com")` writes that one name and ignores CSR/caller names of that
   type.
-- `maxEntries(n)` caps the list after union.
+- `maxEntries(n)` / `minEntries(n)` apply after union. On **subject** RDNs, omitted
+  `maxEntries` means 1 (at most one CN unless you raise it). On SAN, omitted means
+  unlimited.
+- `restrict(RestrictionRule)` or `restrict("typeName")` — see [Custom restrictions](#custom-restrictions).
+
+### Custom restrictions
+
+Built-ins (`regex`, `oneOf`, `maxLength`, `country`) need no registration. Anything else
+is a named callable you bind **in process** — a lambda, a method reference, or a Spring
+bean method. There is no plugin JAR / ServiceLoader.
+
+**1. Boolean bean method** (typical Spring service):
+
+```java
+@Service
+public class AcmeDnsChecker {
+    public boolean isAllowed(String dns) {
+        return dns != null && dns.endsWith(".acme.com");
+    }
+}
+
+@Configuration
+public class TsealRestrictions {
+    @Bean
+    RestrictionRules restrictionRules(AcmeDnsChecker checker) {
+        return RestrictionRules.builtin()
+                .bind("acmeDns", checker::isAllowed, "value.acmeDns", "DNS not on allowlist");
+    }
+}
+```
+
+**2. Method that returns `RestrictionOutcome`:**
+
+```java
+RestrictionRules.builtin()
+        .bind("acmeDns", checker::evaluate);
+```
+
+**3. Use the name on a field rule and in JSON:**
+
+```java
+PolicyBuilder.httpsPolicy()
+        .dns(fromCsr().restrict("acmeDns"))
+        .build();
+```
+
+```json
+"dns": {
+  "mode": "fromCsr",
+  "restrictions": [ { "type": "acmeDns" } ]
+}
+```
+
+`bind` registers immediately for JSON and `restrict("acmeDns")`. Anonymous
+`.restrict(v -> …)` still works for in-memory policies; it cannot be snapshotted — bind
+a name if the policy must go through JSON.
 
 `.country(...)` additionally encodes as PrintableString and, unless `matching` / `oneOf`
 is already set, applies `[A-Z]{2}`. That is the policy-layer counterpart of the CSR
@@ -440,6 +502,8 @@ public record PolicyViolation(String field, String message) {}
 
 `field` is dotted and stable: `subject.CN`, `subject.O`, `subject.C`, `san.dNSName`,
 `san.iPAddress`, `extension.request.<oid>`, `unknown.subject.<oid>`, `validity`.
+`code` is a machine token (`ViolationCodes`, e.g. `value.regex`, `san.unknown`) for API
+error bodies.
 
 `check` answers “would this CSR be accepted?”. It does not allocate a serial, issuer,
 SKI, AKI, or signature — those belong to the signer.
@@ -696,14 +760,18 @@ mistake as an HTTPS CSR with no SAN.
 
 ### Policy does not sign
 
-`IssuancePolicy` has no key, no issuer, no `ContentSigner`. Step 3 will look like:
+`IssuancePolicy` has no key, no issuer, no `ContentSigner`. Issuance lives on
+`CertificateIssuer` — see [issue/readme.md](../issue/readme.md):
 
 ```java
-// not this document — sketch of the consumer only
-SignedCertificate cert = CertificateSigner.sign(csr, policy, provider);
+IssuedCertificate cert = CertificateIssuer.issue()
+        .csr(csr)
+        .policy(policy)
+        .using(caCert, caKey)
+        .issue();
 ```
 
-The signer will call the same `PolicyEngine.evaluate(...)` that `check` uses, then attach
+The issuer calls the same `PolicyEngine.evaluate(...)` that `check` uses, then attaches
 issuer, serial, SKI, AKI, and the CA signature.
 
 ### `check` collects every violation
@@ -721,12 +789,13 @@ is composition of rules on one accumulator, not a decorator chain.
 
 ## Out of scope
 
-This module does not issue certificates. Still out of scope here:
+This module does not issue certificates. Issuance is [step 3](../issue/readme.md).
+Still out of scope **here**:
 
-- **Signing / PKCS provider / HSM.** Step 3.
-- **Serial, issuer, SKI, AKI, notBefore clock-skew policy.** Signer-owned. `check`
+- **Signing / PKCS provider / HSM.** `CertificateIssuer` plus `ContentSigner`.
+- **Serial, issuer, SKI, AKI, notBefore clock-skew policy.** Issuer-owned. `check`
   evaluates the validity **rule** (sourcing + min/max) against the CSR and caller; it
-  does not need a clock for that. The signer applies a `Clock` when turning the winning
+  does not need a clock for that. The issuer applies a `Clock` when turning the winning
   duration into `notBefore` / `notAfter`.
 - **Clamping** a requested lifetime to `max`. v1 rejects. Use `exactly` to force a
   duration.
@@ -738,12 +807,11 @@ This module does not issue certificates. Still out of scope here:
 - **SCEP/EST/ACME.** Transport is the caller’s concern.
 - **Phase 2 certificate validation.** A validation policy may share rule types later;
   this object is an *issuance* profile, not a chain validator.
-- **Matching a CSR signature / proof-of-possession.** The signer must verify the CSR
-  signature; `check` does not (it has no reason to, and CSR signature verification is
-  already covered by Bouncy Castle on `PKCS10CertificationRequest`).
+- **Matching a CSR signature / proof-of-possession.** The issuer verifies the CSR
+  signature; `check` does not (it has no reason to).
 
-Open question deferred to the signer doc (not blocking this API): small notBefore
-backdate for clock skew (e.g. 5 minutes). That is a signer default, not a policy field.
+NotBefore backdate (default 5 minutes) is an issuer default, not a policy field. See
+[issue/readme.md](../issue/readme.md).
 
 ---
 
@@ -754,7 +822,7 @@ backdate for clock skew (e.g. 5 minutes). That is a signer default, not a policy
    `CsrBuilder`.
 2. **Artifact.** `build()` returns an immutable reusable policy, not a certificate.
    Independent usefulness is `check(...)`.
-3. **Sourcing.** `fromCsr` / `exactly` / `forbidden`, plus `optional` / `orCaller` /
+3. **Sourcing.** `fromCsr` / `exactly` / `forbidden` / `ignoreCsr`, plus `optional` / `orCaller` /
    `orDefault` / constraints. Precedence is fixed: CSR → caller → default.
 4. **Allow-list.** Unexpected subject RDNs, SAN types, and requested extensions fail.
    KU / EKU / BC in the CSR are ignored. Enrollment attributes are ignored.
@@ -783,6 +851,7 @@ backdate for clock skew (e.g. 5 minutes). That is a signer default, not a policy
 
 `IssuancePolicy.snapshot()` / `fromSnapshot` is the format-agnostic interchange.
 JSON is module `:tseal-policy-json` so `:tseal` stays Bouncy Castle–only.
+Schema version 2 (`extends`, `restrictions`). Version 1 documents still read.
 See [serde.md](serde.md).
 
 ---

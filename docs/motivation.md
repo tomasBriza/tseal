@@ -7,8 +7,9 @@ The goal is **not** a full-blown PKI product, but a small, easy-to-use, hard-to-
 with minimal dependencies (Bouncy Castle only). It should expose a fluent, type-safe API with
 safe defaults and prebuilt policies for the common cases, while staying customizable.
 
-**Status.** CSR builder and issuance policy are implemented. Signing, validation, CRL, and
-OCSP are planned. See [csr/readme.md](csr/readme.md) and [policy/readme.md](policy/readme.md).
+**Status.** CSR builder, issuance policy, and certificate issuance are implemented.
+Validation, CRL, and OCSP are planned. See [csr/readme.md](csr/readme.md),
+[policy/readme.md](policy/readme.md), and [issue/readme.md](issue/readme.md).
 
 ## Components
 
@@ -30,15 +31,17 @@ This component is implemented (`com.tbr.pki.tseal.csr`).
 - One engine path: every builder writes into a shared accumulator; Bouncy Castle lives
   only in `CsrEngine`.
 
-### Certificate signing (planned)
+### Certificate signing
 
-A tool that accepts a CSR and returns the signed certificate.
+A tool that accepts a CSR and returns the signed certificate. Implemented
+(`CertificateIssuer` in `com.tbr.pki.tseal.issue`). See [issue/readme.md](issue/readme.md).
 
-- Accept the CSR as a file or a string.
-- Accept a certificate (signing) policy to sign the CSR with.
-- Return the signed certificate.
-- Delegate the actual signing operation to a pluggable PKCS provider, giving flexibility
-  (in-memory key, PKCS#11 / HSM).
+- Accept the CSR as a `PKCS10CertificationRequest` or PEM string.
+- Accept an `IssuancePolicy` to evaluate the CSR with (same engine as `check`).
+- Return `IssuedCertificate` (JCA `X509Certificate` + PEM).
+- Sign with an in-memory CA key or a Bouncy Castle `ContentSigner` (PKCS#11 / HSM).
+- Self-signed path for roots. Non-CA issuers are rejected.
+- `customize` for caller-conditional extensions after policy materialization.
 
 ### Certificate policy
 
@@ -92,7 +95,7 @@ Each phase is independently useful and builds on the previous one.
 
 1. CSR builder — **done**
 2. Certificate policy — **done**
-3. Certificate signing (incl. PKCS#11 delegation)
+3. Certificate signing (incl. PKCS#11 via `ContentSigner`) — **done**
 
 ### Phase 2 — Validation
 

@@ -2,10 +2,13 @@ package com.tbr.pki.tseal.policy;
 
 import com.tbr.pki.tseal.csr.CsrBuilder;
 import com.tbr.pki.tseal.csr.CsrResult;
-import com.tbr.pki.tseal.csr.KeyAlgorithm;
-import com.tbr.pki.tseal.csr.KeyPairFactory;
-import org.bouncycastle.asn1.x509.Extension;
-import org.bouncycastle.asn1.x509.GeneralName;
+import com.tbr.pki.tseal.key.KeyAlgorithm;
+import com.tbr.pki.tseal.key.KeyPairFactory;
+import com.tbr.pki.tseal.policy.builder.CustomPolicyBuilder;
+import com.tbr.pki.tseal.policy.engine.Evaluation;
+import com.tbr.pki.tseal.policy.engine.PolicyEngine;
+import com.tbr.pki.tseal.policy.restriction.RestrictionOutcome;
+
 import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.junit.jupiter.api.Test;
@@ -16,6 +19,8 @@ import java.time.Duration;
 import static com.tbr.pki.tseal.policy.Rules.exactly;
 import static com.tbr.pki.tseal.policy.Rules.forbidden;
 import static com.tbr.pki.tseal.policy.Rules.fromCsr;
+import static com.tbr.pki.tseal.policy.Rules.ignoreCsr;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -287,5 +292,130 @@ class PolicyBuilderTest {
         PolicyViolationException ex = assertThrows(
                 PolicyViolationException.class, () -> policy.check(csr.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> v.field().equals("subject.C")));
+        assertTrue(ex.violations().stream().anyMatch(v -> ViolationCodes.VALUE_COUNTRY.equals(v.code())));
+    }
+
+    @Test
+    void dnsMatching_hasStableCode() {
+        CsrResult bad = CsrBuilder.httpsCsr().dns("app.evil.com").build(kp);
+        PolicyViolationException ex = assertThrows(
+                PolicyViolationException.class,
+                () -> PolicyBuilder.httpsPolicy().dns(fromCsr().matching(".*\\.acme\\.com")).build()
+                        .check(bad.request()));
+        assertTrue(ex.violations().stream().anyMatch(v -> ViolationCodes.VALUE_REGEX.equals(v.code())));
+    }
+
+    @Test
+    void unknownSan_hasStableCode() {
+        CsrResult csr = CsrBuilder.custom()
+                .subject().commonName("app").and()
+                .san().dns("app.acme.com").email("svc@acme.com").and()
+                .build(kp);
+        PolicyViolationException ex = assertThrows(
+                PolicyViolationException.class,
+                () -> PolicyBuilder.httpsPolicy().build().check(csr.request()));
+        assertTrue(ex.violations().stream().anyMatch(v -> ViolationCodes.SAN_UNKNOWN.equals(v.code())));
+    }
+
+    @Test
+    void subjectCardinality_defaultMaxOne() {
+        CsrResult csr = CsrBuilder.custom()
+                .subject().commonName("a").commonName("b").and()
+                .san().dns("app.acme.com").and()
+                .build(kp);
+        PolicyViolationException ex = assertThrows(
+                PolicyViolationException.class,
+                () -> PolicyBuilder.httpsPolicy().build().check(csr.request()));
+        assertTrue(ex.violations().stream().anyMatch(v -> ViolationCodes.SUBJECT_CARDINALITY.equals(v.code())));
+    }
+
+    @Test
+    void subjectCardinality_maxEntriesTwo() {
+        CsrResult csr = CsrBuilder.custom()
+                .subject().commonName("a").commonName("b").and()
+                .san().dns("app.acme.com").and()
+                .build(kp);
+        IssuancePolicy policy = PolicyBuilder.httpsPolicy()
+                .commonName(fromCsr().optional().maxEntries(2))
+                .build();
+        assertDoesNotThrow(() -> policy.check(csr.request()));
+    }
+
+    @Test
+    void lambdaRestriction_enforced() {
+        CsrResult ok = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
+        CsrResult bad = CsrBuilder.httpsCsr().dns("app.evil.com").build(kp);
+        IssuancePolicy policy = PolicyBuilder.httpsPolicy()
+                .dns(fromCsr().restrict(v -> v.endsWith(".acme.com")
+                        ? RestrictionOutcome.allow()
+                        : RestrictionOutcome.reject("value.suffix", "must end with .acme.com")))
+                .build();
+        assertDoesNotThrow(() -> policy.check(ok.request()));
+        PolicyViolationException ex = assertThrows(
+                PolicyViolationException.class, () -> policy.check(bad.request()));
+        assertTrue(ex.violations().stream().anyMatch(v -> "value.suffix".equals(v.code())));
+    }
+
+    @Test
+    void ignoreCsr_usesCallerThenDefault() {
+        CsrResult csr = CsrBuilder.httpsCsr()
+                .commonName("from-csr")
+                .dns("app.acme.com")
+                .build(kp);
+        IssuancePolicy policy = PolicyBuilder.httpsPolicy()
+                .commonName(ignoreCsr().orCaller().orDefault("fallback"))
+                .build();
+
+        assertDoesNotThrow(() -> policy.check(csr.request()));
+        Evaluation withDefault = PolicyEngine.evaluate(
+                policy.spec, csr.request(), CallerValues.empty());
+        assertTrue(withDefault.ok(), withDefault.violations::toString);
+        assertTrue(withDefault.subject.toString().contains("fallback"));
+        assertTrue(!withDefault.subject.toString().contains("from-csr"));
+
+        Evaluation withCaller = PolicyEngine.evaluate(
+                policy.spec, csr.request(), CallerValues.of().commonName("from-caller"));
+        assertTrue(withCaller.ok(), withCaller.violations::toString);
+        assertTrue(withCaller.subject.toString().contains("from-caller"));
+    }
+
+    @Test
+    void ignoreCsr_snapshotRoundTrip() {
+        IssuancePolicy original = PolicyBuilder.httpsPolicy()
+                .organization(ignoreCsr().orCaller().orDefault("Acme"))
+                .build();
+        IssuancePolicy restored = original.snapshot().toPolicy();
+        assertTrue(restored.snapshot().subject().get("O").mode().equals("ignoreCsr"));
+        CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
+        assertDoesNotThrow(() -> restored.check(csr.request(), CallerValues.of().organization("West")));
+    }
+
+    @Test
+    void setRdn_cnAndEmail_accepted() throws Exception {
+        var name = new org.bouncycastle.asn1.x500.X500Name(new org.bouncycastle.asn1.x500.RDN[] {
+                new org.bouncycastle.asn1.x500.RDN(new org.bouncycastle.asn1.x500.AttributeTypeAndValue[] {
+                        new org.bouncycastle.asn1.x500.AttributeTypeAndValue(
+                                org.bouncycastle.asn1.x500.style.BCStyle.CN,
+                                new org.bouncycastle.asn1.DERUTF8String("Jane")),
+                        new org.bouncycastle.asn1.x500.AttributeTypeAndValue(
+                                org.bouncycastle.asn1.x500.style.BCStyle.E,
+                                new org.bouncycastle.asn1.DERUTF8String("jane@acme.com"))
+                })
+        });
+        var builder = new org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder(name, kp.getPublic());
+        var signer = new org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withECDSA")
+                .setProvider(org.bouncycastle.jce.provider.BouncyCastleProvider.PROVIDER_NAME)
+                .build(kp.getPrivate());
+        var csr = builder.build(signer);
+
+        IssuancePolicy policy = PolicyBuilder.custom()
+                .subject()
+                    .commonName(fromCsr().optional())
+                    .rdn(org.bouncycastle.asn1.x500.style.BCStyle.E, fromCsr().optional().maxEntries(1))
+                .and()
+                .endEntity()
+                .validity(Duration.ofDays(90))
+                .build();
+        assertDoesNotThrow(() -> policy.check(csr));
     }
 }

@@ -1,14 +1,19 @@
 package com.tbr.pki.tseal.policy;
 
+import com.tbr.pki.tseal.policy.engine.CsrView;
+import com.tbr.pki.tseal.policy.engine.PolicyAccumulator;
+import com.tbr.pki.tseal.policy.engine.PolicyEngine;
+import com.tbr.pki.tseal.policy.snapshot.PolicySnapshot;
+
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 
 import java.util.Objects;
 
 public final class IssuancePolicy {
 
-    final PolicyAccumulator spec;
+    public final PolicyAccumulator spec;
 
-    IssuancePolicy(PolicyAccumulator spec) {
+    public IssuancePolicy(PolicyAccumulator spec) {
         if (spec.validity == null) {
             throw new IllegalStateException("validity rule is required");
         }
@@ -39,5 +44,9 @@ public final class IssuancePolicy {
 
     public static IssuancePolicy fromSnapshot(PolicySnapshot snapshot) {
         return Objects.requireNonNull(snapshot, "snapshot").toPolicy();
+    }
+
+    public IssuancePolicy overlay(PolicySnapshot overlay) {
+        return snapshot().merge(overlay).toPolicy();
     }
 }

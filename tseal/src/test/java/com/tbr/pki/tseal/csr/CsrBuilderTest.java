@@ -1,5 +1,8 @@
 package com.tbr.pki.tseal.csr;
 
+import com.tbr.pki.tseal.key.KeyAlgorithm;
+import com.tbr.pki.tseal.key.KeyPairFactory;
+
 import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.pkcs.Attribute;

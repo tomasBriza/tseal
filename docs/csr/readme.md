@@ -2,7 +2,8 @@
 
 A fluent builder for PKCS#10 Certificate Signing Requests, built on top of Bouncy Castle.
 
-Package: `com.tbr.pki.tseal.csr`
+Packages: `com.tbr.pki.tseal.csr` (façade), `.builder` (presets), `.engine`
+(`CsrAccumulator` / `CsrEngine`). Key generation is `com.tbr.pki.tseal.key`.
 
 The API has **three levels of input**: a trivial preset for people who don't deal with PKI,
 full customization for those who know exactly what they want, and an escape hatch for
@@ -61,13 +62,13 @@ Three layers, one-directional dependency top to bottom:
 └──────────────────────────┼────────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  CsrAccumulator  (package-private, mutable)                   │
+│  CsrAccumulator  (csr.engine, mutable)                        │
 │  subject · SAN · ExtensionsGenerator · other attributes ·     │
 │  signature / ContentSigner override · adaptive KeyUsage flag  │
 └──────────────────────────┼────────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  CsrEngine  (package-private)                                 │
+│  CsrEngine  (csr.engine)                                      │
 │  CsrAccumulator + PublicKey + (PrivateKey | ContentSigner)    │
 │                            → CsrResult                        │
 │  • finalize extensions   • signature alg derivation           │
@@ -86,11 +87,12 @@ Three layers, one-directional dependency top to bottom:
 - **Policy builder = preset + narrowed surface.** On construction it writes KU / EKU /
   BasicConstraints into the accumulator and exposes only the relevant methods.
 
-Public types: `CsrBuilder`, `CsrResult`, `KeyPairFactory`, `KeyAlgorithm`, `Oids`,
-`HttpsStart`, `HttpsBuildable`, `ClientAuthBuilder`, `SigningCertBuilder`,
-`CustomCsrBuilder`, `SubjectBuilder`, `SanBuilder`, `RawCsr`.
-
-Package-private: `CsrAccumulator`, `CsrEngine`, `HttpsPolicyBuilder`, `RawCsrImpl`.
+Façade (`csr`): `CsrBuilder`, `CsrResult`, `Oids`, `RawCsr`.
+Builders (`csr.builder`): `HttpsStart`, `HttpsBuildable`, `HttpsCsrBuilder`,
+`ClientAuthBuilder`, `SigningCertBuilder`, `CustomCsrBuilder`, `SubjectBuilder`,
+`SanBuilder`.
+Engine (`csr.engine`): `CsrAccumulator`, `CsrEngine`, `RawCsrImpl`.
+Keys (`key`): `KeyPairFactory`, `KeyAlgorithm`.
 
 ---
 
@@ -168,8 +170,8 @@ only. Client-auth and signing policies write a fixed KeyUsage when the builder i
 
 ### Generating a key pair
 
-`KeyPairFactory` is separate from the builder. It returns a standard `java.security.KeyPair`,
-which is passed to any builder:
+`KeyPairFactory` (`com.tbr.pki.tseal.key`) is separate from the builder. It returns a
+standard `java.security.KeyPair`, which is passed to any builder:
 
 ```java
 KeyPair keyPair = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
