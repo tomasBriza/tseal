@@ -226,6 +226,42 @@ class CertificateIssuerTest {
     }
 
     @Test
+    void root_intermediate_leaf_chain() throws Exception {
+        KeyPair intKeys = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
+
+        IssuedCertificate root = CertificateIssuer.issue()
+                .csr(CsrBuilder.signingCsr().commonName("Acme Root").build(caKeys).request())
+                .policy(PolicyBuilder.signingPolicy().unboundedPathLen().build())
+                .selfSigned(caKeys)
+                .issue();
+        assertTrue(root.certificate().getBasicConstraints() >= 0);
+
+        IssuedCertificate intermediate = CertificateIssuer.issue()
+                .csr(CsrBuilder.signingCsr().commonName("Acme Intermediate").build(intKeys).request())
+                .policy(PolicyBuilder.signingPolicy().pathLen(0).build())
+                .using(root.certificate(), caKeys.getPrivate())
+                .issue();
+
+        intermediate.certificate().verify(root.certificate().getPublicKey());
+        assertTrue(intermediate.certificate().getBasicConstraints() >= 0);
+        assertEquals(0, intermediate.certificate().getBasicConstraints());
+        assertFalse(intermediate.certificate().getIssuerX500Principal().equals(
+                intermediate.certificate().getSubjectX500Principal()));
+        assertTrue(intermediate.certificate().getIssuerX500Principal().getName().contains("Acme Root"));
+        assertTrue(intermediate.certificate().getSubjectX500Principal().getName().contains("Acme Intermediate"));
+
+        IssuedCertificate leaf = CertificateIssuer.issue()
+                .csr(CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys).request())
+                .policy(PolicyBuilder.httpsPolicy().build())
+                .using(intermediate.certificate(), intKeys.getPrivate())
+                .issue();
+
+        leaf.certificate().verify(intermediate.certificate().getPublicKey());
+        assertFalse(leaf.certificate().getBasicConstraints() >= 0);
+        assertTrue(leaf.certificate().getIssuerX500Principal().getName().contains("Acme Intermediate"));
+    }
+
+    @Test
     void selfSignedKeyPair_mustMatchCsr() {
         KeyPair other = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
         var csr = CsrBuilder.signingCsr().commonName("Acme Root").build(caKeys);

@@ -18,11 +18,13 @@ This document describes the **implemented** API, not a future design.
     - [Type-state](#type-state)
     - [CA-signed leaf](#ca-signed-leaf)
     - [Self-signed CA](#self-signed-ca)
+    - [Certificate chain](#certificate-chain)
     - [PEM CSR](#pem-csr)
     - [Caller values](#caller-values)
     - [Clock, serial, backdate](#clock-serial-backdate)
     - [HSM / ContentSigner](#hsm--contentsigner)
     - [Customize](#customize)
+- [Java KeyStore](../keystore/readme.md)
 - [What the engine actually puts on the certificate](#what-the-engine-actually-puts-on-the-certificate)
 - [Key design decisions](#key-design-decisions)
 - [Out of scope](#out-of-scope)
@@ -152,6 +154,49 @@ is the split-key form when the public key is already in the CSR.
 Issuer name is the evaluated subject. SKI and AKI are both derived from the subject
 public key.
 
+`selfSigned` is only the root. An intermediate CA is a `signingPolicy()` cert issued with
+`using(parent, parentKey)` — same as a leaf, different policy.
+
+### Certificate chain
+
+Root (self-signed) → intermediate (CA, signed by the root) → leaf (signed by the
+intermediate). `using` does not force an end-entity cert; the **policy** does
+(`httpsPolicy` / `clientAuthPolicy` are end-entity, `signingPolicy` is CA).
+
+```java
+IssuedCertificate root = CertificateIssuer.issue()
+        .csr(CsrBuilder.signingCsr().commonName("Acme Root").build(rootKeys).request())
+        .policy(PolicyBuilder.signingPolicy().unboundedPathLen().build())
+        .selfSigned(rootKeys)
+        .issue();
+
+IssuedCertificate intermediate = CertificateIssuer.issue()
+        .csr(CsrBuilder.signingCsr().commonName("Acme Intermediate").build(intKeys).request())
+        .policy(PolicyBuilder.signingPolicy().pathLen(0).build())
+        .using(root.certificate(), rootKeys.getPrivate())
+        .issue();
+
+IssuedCertificate leaf = CertificateIssuer.issue()
+        .csr(CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys).request())
+        .policy(PolicyBuilder.httpsPolicy().build())
+        .using(intermediate.certificate(), intKeys.getPrivate())
+        .issue();
+
+leaf.certificate().verify(intermediate.certificate().getPublicKey());
+intermediate.certificate().verify(root.certificate().getPublicKey());
+```
+
+`signingPolicy()` defaults to `pathLen(0)`: that CA may issue end-entity certs, not
+further CAs. A **root that signs intermediates** needs `.pathLen(1)` (one extra CA
+below it) or `.unboundedPathLen()`. The intermediate can keep the default `pathLen(0)`
+if it only signs leaves.
+
+tSeal still returns one cert per `issue()`. Assemble the chain yourself:
+`[leaf, intermediate, root]` — see [Java KeyStore](../keystore/readme.md).
+
+What **is** rejected: `using` an end-entity certificate as issuer (`basicConstraints < 0`).
+That is not a CA and cannot sign a chain.
+
 ### PEM CSR
 
 ```java
@@ -224,6 +269,10 @@ CertificateIssuer.issue()
 When a `ContentSigner` is supplied, the engine does not derive a signature algorithm
 and does not need the CA private key in process. The issuer certificate is still
 required for the issuer name, AKI, and the CA check.
+
+PKCS#12 / JKS / PKCS#11 are JCA `KeyStore`. tSeal does not wrap them; load a
+`PrivateKey` and `X509Certificate` and pass them to `using`. See
+[Java KeyStore](../keystore/readme.md).
 
 ### Customize
 
@@ -342,7 +391,8 @@ the CSR builder (`SHA256withECDSA` for P-256, `Ed25519`, …). An explicit
 3. **Return type.** `IssuedCertificate(X509Certificate, String pem)`.
 4. **Signing hooks.** In-memory `PrivateKey` / `KeyPair`, or `ContentSigner`. No
    PKCS-provider interface beyond that.
-5. **Self-signed.** First-class `.selfSigned(...)` for roots / test CAs.
+5. **Self-signed.** `.selfSigned(...)` for roots only. Intermediate CAs use
+   `signingPolicy()` + `using(parentCa, parentKey)`.
 6. **Non-CA issuer.** Rejected. `signingPolicy()` produces `CA=true`.
 7. **Customize.** `BiConsumer<CallerValues, RawIssuedCertificate>` after policy
    extensions, before SKI/AKI.

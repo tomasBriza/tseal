@@ -204,7 +204,10 @@ KeyUsage for HTTPS is **adaptive at evaluation time**, from the CSR public key t
 same rule as `httpsCsr()`. Client-auth and signing use a fixed KeyUsage.
 
 `pathLen(0)` is the signing-policy default: the cert can issue end-entity certs, not
-sub-CAs. `.pathLen(n)` or `.unboundedPathLen()` override it.
+sub-CAs. `.pathLen(n)` or `.unboundedPathLen()` override it. An intermediate CA is still
+a `signingPolicy()` cert — issue it with `using(parentCa, parentKey)`, not `selfSigned`.
+A root that signs intermediates needs `.pathLen(1)` or `.unboundedPathLen()`. See
+[issue/readme.md](../issue/readme.md#certificate-chain).
 
 Default validity rule on presets (see [Validity](#validity)):
 

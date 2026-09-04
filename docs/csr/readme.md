@@ -211,6 +211,10 @@ build(PublicKey publicKey, ContentSigner signer)    // HSM / explicit signer
 For an HSM-held key (e.g. a PKCS#11 / Luna slot), where signing happens on the device and the
 private key is only a handle, pass a `ContentSigner` backed by the right provider.
 
+A software key in a PKCS#12 / JKS is the split-key form: `build(publicKey, privateKey)`
+from `ks.getCertificate(alias).getPublicKey()` and `ks.getKey(alias, password)`. See
+[Java KeyStore](../keystore/readme.md).
+
 This single hook covers HSM signing, RSA-PSS with explicit parameters, and any exotic
 algorithm — all without widening the typed API.
 

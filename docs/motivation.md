@@ -40,8 +40,11 @@ A tool that accepts a CSR and returns the signed certificate. Implemented
 - Accept an `IssuancePolicy` to evaluate the CSR with (same engine as `check`).
 - Return `IssuedCertificate` (JCA `X509Certificate` + PEM).
 - Sign with an in-memory CA key or a Bouncy Castle `ContentSigner` (PKCS#11 / HSM).
-- Self-signed path for roots. Non-CA issuers are rejected.
+- Self-signed path for roots. Intermediate CAs are `signingPolicy()` signed with
+  `using(parentCa, parentKey)`. Non-CA issuers are rejected.
 - `customize` for caller-conditional extensions after policy materialization.
+- Java `KeyStore` (PKCS#12 / JKS / PKCS#11) is the caller’s: see
+  [keystore/readme.md](keystore/readme.md).
 
 ### Certificate policy
 

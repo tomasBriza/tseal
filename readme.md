@@ -70,4 +70,5 @@ Requires Java 25.
 - [CSR builder API](docs/csr/readme.md)
 - [Issuance policy API](docs/policy/readme.md)
 - [Certificate issuance API](docs/issue/readme.md)
+- [Java KeyStore](docs/keystore/readme.md)
 - [Policy JSON serialization](docs/policy/serde.md)
