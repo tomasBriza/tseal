@@ -72,3 +72,5 @@ Requires Java 25.
 - [Certificate issuance API](docs/issue/readme.md)
 - [Java KeyStore](docs/keystore/readme.md)
 - [Policy JSON serialization](docs/policy/serde.md)
+
+This project was built with help from AI — a playground, and a way to take some of the day-to-day PKI pain out of the job.
