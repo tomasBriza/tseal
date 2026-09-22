@@ -19,7 +19,7 @@ Validation, CRL, and OCSP are planned. See [csr/readme.md](csr/readme.md),
 ### CSR builder
 
 A reusable CSR builder with prebuilt policies, built through a fluent Java builder DSL.
-This component is implemented (`com.tbr.pki.tseal.csr`).
+This component is implemented (`io.github.tomasbriza.tseal.csr`).
 
 - Generate a key pair (`KeyPairFactory`) or reuse an existing one.
 - Prebuilt policies for common use cases:
@@ -37,7 +37,7 @@ This component is implemented (`com.tbr.pki.tseal.csr`).
 ### Certificate signing
 
 A tool that accepts a CSR and returns the signed certificate. Implemented
-(`CertificateIssuer` in `com.tbr.pki.tseal.issue`). See [issue/readme.md](issue/readme.md).
+(`CertificateIssuer` in `io.github.tomasbriza.tseal.issue`). See [issue/readme.md](issue/readme.md).
 
 - Accept the CSR as a `PKCS10CertificationRequest` or PEM string.
 - Accept an `IssuancePolicy` to evaluate the CSR with (same engine as `check`).
@@ -52,7 +52,7 @@ A tool that accepts a CSR and returns the signed certificate. Implemented
 ### Certificate policy
 
 A policy describing how a CSR is turned into a certificate. Implemented
-(`com.tbr.pki.tseal.policy`). See [policy/readme.md](policy/readme.md).
+(`io.github.tomasbriza.tseal.policy`). See [policy/readme.md](policy/readme.md).
 
 - Fluent DSL (`PolicyBuilder`), same three levels as CSR: presets, `custom()`, escape hatch.
 - Prebuilt policies: `httpsPolicy()`, `clientAuthPolicy()`, `signingPolicy()`.

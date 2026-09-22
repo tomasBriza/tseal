@@ -37,8 +37,8 @@ IssuedCertificate leaf = CertificateIssuer.issue()
         .issue();
 ```
 
-Typical imports: `com.tbr.pki.tseal.key` (`KeyPairFactory`), `com.tbr.pki.tseal.csr`
-(`CsrBuilder`), `com.tbr.pki.tseal.policy` (`PolicyBuilder`), `com.tbr.pki.tseal.issue`
+Typical imports: `io.github.tomasbriza.tseal.key` (`KeyPairFactory`), `io.github.tomasbriza.tseal.csr`
+(`CsrBuilder`), `io.github.tomasbriza.tseal.policy` (`PolicyBuilder`), `io.github.tomasbriza.tseal.issue`
 (`CertificateIssuer`).
 
 **Currently implemented:** PKCS#10 CSR builder, issuance policy, certificate issuance —

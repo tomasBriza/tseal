@@ -2,8 +2,8 @@
 
 A fluent builder for PKCS#10 Certificate Signing Requests, built on top of Bouncy Castle.
 
-Packages: `com.tbr.pki.tseal.csr` (façade), `.builder` (presets), `.engine`
-(`CsrAccumulator` / `CsrEngine`). Key generation is `com.tbr.pki.tseal.key`.
+Packages: `io.github.tomasbriza.tseal.csr` (façade), `.builder` (presets), `.engine`
+(`CsrAccumulator` / `CsrEngine`). Key generation is `io.github.tomasbriza.tseal.key`.
 
 The API has **three levels of input**: a trivial preset for people who don't deal with PKI,
 full customization for those who know exactly what they want, and an escape hatch for
@@ -170,7 +170,7 @@ only. Client-auth and signing policies write a fixed KeyUsage when the builder i
 
 ### Generating a key pair
 
-`KeyPairFactory` (`com.tbr.pki.tseal.key`) is separate from the builder. It returns a
+`KeyPairFactory` (`io.github.tomasbriza.tseal.key`) is separate from the builder. It returns a
 standard `java.security.KeyPair`, which is passed to any builder:
 
 ```java

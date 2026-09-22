@@ -1,0 +1,52 @@
+package io.github.tomasbriza.tseal.policy;
+
+import io.github.tomasbriza.tseal.policy.engine.CsrView;
+import io.github.tomasbriza.tseal.policy.engine.PolicyAccumulator;
+import io.github.tomasbriza.tseal.policy.engine.PolicyEngine;
+import io.github.tomasbriza.tseal.policy.snapshot.PolicySnapshot;
+
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+
+import java.util.Objects;
+
+public final class IssuancePolicy {
+
+    public final PolicyAccumulator spec;
+
+    public IssuancePolicy(PolicyAccumulator spec) {
+        if (spec.validity == null) {
+            throw new IllegalStateException("validity rule is required");
+        }
+        spec.validity.validateStatically();
+        this.spec = spec;
+    }
+
+    public void check(PKCS10CertificationRequest csr) {
+        check(csr, CallerValues.empty());
+    }
+
+    public void check(PKCS10CertificationRequest csr, CallerValues caller) {
+        PolicyEngine.check(spec, csr, caller);
+    }
+
+    public void check(String pem) {
+        check(pem, CallerValues.empty());
+    }
+
+    public void check(String pem, CallerValues caller) {
+        PolicyEngine.check(spec, CsrView.parsePem(pem), caller);
+    }
+
+    /** Format-agnostic interchange for codecs (JSON, …). */
+    public PolicySnapshot snapshot() {
+        return PolicySnapshot.from(this);
+    }
+
+    public static IssuancePolicy fromSnapshot(PolicySnapshot snapshot) {
+        return Objects.requireNonNull(snapshot, "snapshot").toPolicy();
+    }
+
+    public IssuancePolicy overlay(PolicySnapshot overlay) {
+        return snapshot().merge(overlay).toPolicy();
+    }
+}

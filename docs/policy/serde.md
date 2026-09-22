@@ -1,7 +1,7 @@
 # Policy serialization
 
 An `IssuancePolicy` can be written to a document and read back. The interchange type is
-`PolicySnapshot` in `com.tbr.pki.tseal.policy.snapshot` (no JSON library). Formats
+`PolicySnapshot` in `io.github.tomasbriza.tseal.policy.snapshot` (no JSON library). Formats
 implement `PolicyCodec` in the same package.
 
 Jackson is **not** a core dependency. JSON lives in the `tseal-policy-json` module.

@@ -4,8 +4,8 @@ A fluent builder for **issuance policies**: the rules that say how a CSR becomes
 certificate. This is Phase 1 step 2. It does not sign. Issuance (step 3) takes a CSR plus
 an `IssuancePolicy` plus a CA key or `ContentSigner` — see [issue/readme.md](../issue/readme.md).
 
-Packages: `com.tbr.pki.tseal.policy` (façade + rules), `.builder`, `.restriction`,
-`.snapshot`, `.engine`. Issuance is `com.tbr.pki.tseal.issue`.
+Packages: `io.github.tomasbriza.tseal.policy` (façade + rules), `.builder`, `.restriction`,
+`.snapshot`, `.engine`. Issuance is `io.github.tomasbriza.tseal.issue`.
 
 The API has **three levels of input**, same shape as the CSR builder: a trivial preset, a
 full custom surface, and an escape hatch.
@@ -267,7 +267,7 @@ partitioned CRLs uses `RawPolicy.addExtension`.
 ### Field rules
 
 Every identity method takes a `FieldRule`. Static factories live on `Rules` so examples
-can `import static com.tbr.pki.tseal.policy.Rules.*`.
+can `import static io.github.tomasbriza.tseal.policy.Rules.*`.
 
 ```java
 public final class Rules {

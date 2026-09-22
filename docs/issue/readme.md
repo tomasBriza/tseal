@@ -4,7 +4,7 @@ Issues an X.509 certificate from a PKCS#10 CSR and an `IssuancePolicy`. This is 
 step 3. Policy evaluation stays in `policy.engine` — there is no public evaluation DTO
 for callers to mutate.
 
-Package: `com.tbr.pki.tseal.issue`
+Package: `io.github.tomasbriza.tseal.issue`
 
 This document describes the **implemented** API, not a future design.
 
@@ -75,7 +75,7 @@ This document describes the **implemented** API, not a future design.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-All issuance types live in `com.tbr.pki.tseal.issue`: `CertificateIssuer`,
+All issuance types live in `io.github.tomasbriza.tseal.issue`: `CertificateIssuer`,
 `IssueStart`, `IssueWithCsr`, `IssueWithPolicy`, `IssueBuildable`,
 `IssuedCertificate`, `RawIssuedCertificate`, `CertificateIssueBuilder`, `IssueEngine`.
 
@@ -387,7 +387,7 @@ the CSR builder (`SHA256withECDSA` for P-256, `Ed25519`, …). An explicit
 
 1. **Entry point.** `CertificateIssuer.issue()` type-state builder, not
    `CertificateSigner.sign(csr, policy, provider)`.
-2. **Package.** `com.tbr.pki.tseal.issue`. Policy evaluation stays in `policy.engine`.
+2. **Package.** `io.github.tomasbriza.tseal.issue`. Policy evaluation stays in `policy.engine`.
 3. **Return type.** `IssuedCertificate(X509Certificate, String pem)`.
 4. **Signing hooks.** In-memory `PrivateKey` / `KeyPair`, or `ContentSigner`. No
    PKCS-provider interface beyond that.
