@@ -1,20 +1,12 @@
-# Project tSeal
+# tSeal
 
 [![Build](https://github.com/tomasBriza/tseal/actions/workflows/build.yml/badge.svg)](https://github.com/tomasBriza/tseal/actions/workflows/build.yml)
 
+This project was built with help from AI — a playground, and a way to take some of the day-to-day PKI pain out of the job.
 
-A small Java PKI library — a wrapper for Bouncy Castle — that simplifies certificate issuance, signing, and verification.
+A small Java PKI library wrapping Bouncy Castle. BC is the crypto engine; tSeal is a hard-to-misuse issuance API, not a replacement for calling BC yourself or for running a CA (EJBCA, Boulder, …).
 
-The goal is **not** a full-blown PKI product, but a small, easy-to-use, hard-to-misuse tool with minimal dependencies (Bouncy Castle only). It exposes a fluent, type-safe API with safe defaults and prebuilt policies for the common cases, while staying customizable.
-
-**Modules**
-
-| Artifact | Gradle | Contents |
-|---|---|---|
-| `com.tbr.pki.tseal:tseal` | `:tseal` | CSR builder, issuance policy, certificate issuance (Bouncy Castle only) |
-| `com.tbr.pki.tseal:tseal-policy-json` | `:tseal-policy-json` | JSON codec for `IssuancePolicy` (Jackson) |
-
-**Currently implemented:** PKCS#10 CSR builder (`com.tbr.pki.tseal.csr`), issuance policy (`com.tbr.pki.tseal.policy`), and certificate issuance (`com.tbr.pki.tseal.issue`) — TLS server, client auth, and signing-CA presets, plus a full custom DSL and escape hatches.
+**Policy is data.** An `IssuancePolicy` is a value you can `check(csr)` without a CA key, snapshot, serialize to JSON, and compose with `extends`. Signing consumes that same policy. It is not the X.509 CertificatePolicies extension.
 
 ```java
 KeyPair caKeys = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
@@ -26,27 +18,57 @@ IssuedCertificate ca = CertificateIssuer.issue()
         .selfSigned(caKeys)
         .issue();
 
+IssuancePolicy policy = PolicyBuilder.httpsPolicy()
+        .crl("http://crl.example.com/ca.crl")
+        .ocsp("http://ocsp.example.com")
+        .build();
+
 CsrResult csr = CsrBuilder.httpsCsr()
         .commonName("some server")
         .dns("someserver.com")
         .build(leafKeys);
 
+policy.check(csr.request());   // no CA key required
+
 IssuedCertificate leaf = CertificateIssuer.issue()
         .csr(csr.request())
-        .policy(PolicyBuilder.httpsPolicy()
-                .crl("http://crl.example.com/ca.crl")
-                .ocsp("http://ocsp.example.com")
-                .build())
+        .policy(policy)
         .using(ca.certificate(), caKeys)
         .issue();
-
-leaf.pem();            // PEM-encoded certificate
-leaf.certificate();    // java.security.cert.X509Certificate
 ```
 
 Typical imports: `com.tbr.pki.tseal.key` (`KeyPairFactory`), `com.tbr.pki.tseal.csr`
 (`CsrBuilder`), `com.tbr.pki.tseal.policy` (`PolicyBuilder`), `com.tbr.pki.tseal.issue`
 (`CertificateIssuer`).
+
+**Currently implemented:** PKCS#10 CSR builder, issuance policy, certificate issuance —
+TLS server, client auth, and signing-CA presets, plus a custom DSL and escape hatches.
+Java 21. Apache-2.0.
+
+**Planned:** certificate validation (JCA `CertPathValidator` / PKIX), CRL, OCSP.
+
+## What this library does not do
+
+tSeal issues certificates in-process from a CSR and a policy. It is not a CA.
+
+- **No identity proofing, registration, or audit.** Whoever holds the CA key is the CA.
+- **No private-key protection.** Keys come from the caller (`KeyPair`, `PrivateKey`,
+  `ContentSigner`, or a JCA `KeyStore`). PIN, HSM login, and storage are yours.
+- **`check` does not verify CSR proof-of-possession.** Issuance does.
+- **No chain validation, name constraints, or revocation.** A just-issued cert is not
+  “trusted”; Phase 2 will sit on `CertPathValidator` / PKIX, not a custom path builder.
+- **No PEM bundle.** `IssuedCertificate` is one cert. Assemble `[leaf, …, root]` yourself.
+- **Policy is not a threat model.** A JSON document does not replace operational CA
+  security, CT, or pinning.
+
+See [SECURITY.md](SECURITY.md).
+
+## Modules
+
+| Artifact | Gradle | Contents |
+|---|---|---|
+| `io.github.tomasbriza:tseal` | `:tseal` | CSR builder, issuance policy, certificate issuance (Bouncy Castle only) |
+| `io.github.tomasbriza:tseal-policy-json` | `:tseal-policy-json` | JSON codec for `IssuancePolicy` (Jackson) |
 
 **Use a local snapshot** (this is `0.1.0-SNAPSHOT`, API may still move):
 
@@ -57,14 +79,12 @@ Typical imports: `com.tbr.pki.tseal.key` (`KeyPairFactory`), `com.tbr.pki.tseal.
 ```kotlin
 repositories { mavenLocal(); mavenCentral() }
 dependencies {
-    implementation("com.tbr.pki.tseal:tseal:0.1.0-SNAPSHOT")
-    implementation("com.tbr.pki.tseal:tseal-policy-json:0.1.0-SNAPSHOT") // optional
+    implementation("io.github.tomasbriza:tseal:0.1.0-SNAPSHOT")
+    implementation("io.github.tomasbriza:tseal-policy-json:0.1.0-SNAPSHOT") // optional
 }
 ```
 
-Requires Java 25.
-
-**Planned:** certificate validation, CRL, OCSP.
+Maven Central is not published yet.
 
 - [Motivation and roadmap](docs/motivation.md)
 - [CSR builder API](docs/csr/readme.md)
@@ -72,5 +92,3 @@ Requires Java 25.
 - [Certificate issuance API](docs/issue/readme.md)
 - [Java KeyStore](docs/keystore/readme.md)
 - [Policy JSON serialization](docs/policy/serde.md)
-
-This project was built with help from AI — a playground, and a way to take some of the day-to-day PKI pain out of the job.

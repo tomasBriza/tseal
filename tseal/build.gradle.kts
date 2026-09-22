@@ -1,3 +1,5 @@
+description = "Fluent Java PKI library wrapping Bouncy Castle"
+
 dependencies {
     api("org.bouncycastle:bcprov-jdk18on:1.80")
     api("org.bouncycastle:bcpkix-jdk18on:1.80")

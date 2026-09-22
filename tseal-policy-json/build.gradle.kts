@@ -1,3 +1,5 @@
+description = "JSON codec for tSeal IssuancePolicy"
+
 dependencies {
     api(project(":tseal"))
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")

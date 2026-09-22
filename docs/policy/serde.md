@@ -16,7 +16,7 @@ IssuancePolicy ──snapshot()──► PolicySnapshot
 
 ## JSON module
 
-Coordinates: `com.tbr.pki.tseal:tseal` (core) and `com.tbr.pki.tseal:tseal-policy-json`
+Coordinates: `io.github.tomasbriza:tseal` (core) and `io.github.tomasbriza:tseal-policy-json`
 (Gradle `:tseal` / `:tseal-policy-json`). The root project is an aggregator only.
 
 ```java

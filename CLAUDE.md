@@ -9,21 +9,22 @@ Project Texas is a Java PKI library wrapping Bouncy Castle to simplify certifica
 ## Commands
 
 ```bash
-JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew build   # compile + test (all modules)
-JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew test    # tests only
-JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew :tseal:test
-JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew :tseal-policy-json:test
-JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew :tseal:test --tests "com.tbr.pki.tseal.csr.CsrBuilderTest"
-JAVA_HOME=/home/tomas-briza/.jdks/temurin-25.0.3 ./gradlew publishToMavenLocal
+./gradlew build   # compile + test (all modules); toolchain is Temurin 21
+./gradlew test    # tests only
+./gradlew :tseal:test
+./gradlew :tseal-policy-json:test
+./gradlew :tseal:test --tests "com.tbr.pki.tseal.csr.CsrBuilderTest"
+./gradlew publishToMavenLocal
 ```
 
-CI: `.github/workflows/build.yml` runs `./gradlew build` on Temurin 25 for every push and pull request (compile, jar, tests). JUnit results are published on the workflow run; Gradle HTML reports are uploaded as the `test-reports` artifact.
+CI: `.github/workflows/build.yml` runs `./gradlew build` on Temurin 21 for every push and pull request (compile, jar, tests). JUnit results are published on the workflow run; Gradle HTML reports are uploaded as the `test-reports` artifact.
 
 ## Technical Setup
 
-- **Language**: Java 25 (Temurin-25 at `~/.jdks/temurin-25.0.3`)
+- **Language**: Java 21 (toolchain; Gradle can provision Temurin 21)
 - **Build system**: Gradle 9.3.0 (wrapper at `./gradlew`)
-- **Root package**: `com.tbr.pki.tseal`
+- **Maven group**: `io.github.tomasbriza` (Java packages remain `com.tbr.pki.tseal.*`)
+- **License**: Apache-2.0
 - **Modules**: `:tseal` (core, Bouncy Castle only) and `:tseal-policy-json` (Jackson, implementation-only)
 - **Dependencies**: core is `bcprov-jdk18on` and `bcpkix-jdk18on`. JSON is a separate artifact.
 
@@ -59,7 +60,7 @@ and `docs/issue/readme.md`.
 
 **Phase 2 — Validation**
 
-4. **Certificate Validation** — Policy-driven validator. Covers chain building, expiry, and use-case-specific checks. Same three prebuilt policies as above.
+4. **Certificate Validation** — Policy-driven validator on JCA `CertPathValidator` / PKIX (no custom path building). Covers chain, expiry, and use-case-specific checks. Same three prebuilt policies as above.
 
 **Phase 3 — Revocation**
 

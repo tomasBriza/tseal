@@ -4,8 +4,11 @@ Provide a simple PKI library — a wrapper for Bouncy Castle — that simplifies
 issuance, signing, and verification.
 
 The goal is **not** a full-blown PKI product, but a small, easy-to-use, hard-to-misuse tool
-with minimal dependencies (Bouncy Castle only). It should expose a fluent, type-safe API with
-safe defaults and prebuilt policies for the common cases, while staying customizable.
+with minimal dependencies (Bouncy Castle only). Bouncy Castle is the engine; tSeal is the
+issuance API — not a replacement for calling BC directly or for running a CA. It should
+expose a fluent, type-safe API with safe defaults and prebuilt policies for the common
+cases, while staying customizable. Policy is data (`check`, snapshot, JSON), independently
+of signing.
 
 **Status.** CSR builder, issuance policy, and certificate issuance are implemented.
 Validation, CRL, and OCSP are planned. See [csr/readme.md](csr/readme.md),
