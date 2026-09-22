@@ -84,8 +84,6 @@ dependencies {
 }
 ```
 
-Maven Central is not published yet.
-
 - [Motivation and roadmap](docs/motivation.md)
 - [CSR builder API](docs/csr/readme.md)
 - [Issuance policy API](docs/policy/readme.md)

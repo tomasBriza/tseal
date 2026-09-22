@@ -17,7 +17,7 @@ Project Texas is a Java PKI library wrapping Bouncy Castle to simplify certifica
 ./gradlew publishToMavenLocal
 ```
 
-CI: `.github/workflows/build.yml` runs `./gradlew build` on Temurin 21 for every push and pull request (compile, jar, tests). JUnit results are published on the workflow run; Gradle HTML reports are uploaded as the `test-reports` artifact.
+CI: `.github/workflows/build.yml` runs `./gradlew build` on Temurin 21 for every push and pull request (compile, jar, tests). JUnit results are published on the workflow run; Gradle HTML reports are uploaded as the `test-reports` artifact. `.github/workflows/publish.yml` publishes both modules to Maven Central on a GitHub Release (`vX.Y.Z`) via the Central Portal (`publishAndReleaseToMavenCentral`).
 
 ## Technical Setup
 
