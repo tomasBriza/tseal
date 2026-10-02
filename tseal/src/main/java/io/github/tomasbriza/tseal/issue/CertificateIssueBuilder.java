@@ -134,7 +134,7 @@ public final class CertificateIssueBuilder implements IssueStart, IssueWithCsr, 
     }
 
     @Override
-    public IssuedCertificate issue() {
+    public IssueResult issue() {
         return IssueEngine.issue(
                 csr, policy, caller, issuerCertificate, issuerKey, explicitSigner,
                 selfSigned, clock, backdate, serial, customizer);

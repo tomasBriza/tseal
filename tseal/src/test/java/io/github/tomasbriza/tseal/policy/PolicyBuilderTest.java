@@ -5,14 +5,14 @@ import io.github.tomasbriza.tseal.csr.CsrResult;
 import io.github.tomasbriza.tseal.key.KeyAlgorithm;
 import io.github.tomasbriza.tseal.key.KeyPairFactory;
 import io.github.tomasbriza.tseal.policy.builder.CustomPolicyBuilder;
-import io.github.tomasbriza.tseal.policy.engine.Evaluation;
-import io.github.tomasbriza.tseal.policy.engine.PolicyEngine;
+import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.policy.restriction.RestrictionOutcome;
 
 import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Modifier;
 import java.security.KeyPair;
 import java.time.Duration;
 
@@ -21,7 +21,8 @@ import static io.github.tomasbriza.tseal.policy.Rules.forbidden;
 import static io.github.tomasbriza.tseal.policy.Rules.fromCsr;
 import static io.github.tomasbriza.tseal.policy.Rules.ignoreCsr;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,8 +39,8 @@ class PolicyBuilderTest {
 
         IssuancePolicy policy = PolicyBuilder.httpsPolicy().build();
 
-        assertDoesNotThrow(() -> policy.check(csr.request()));
-        assertDoesNotThrow(() -> policy.check(csr.pem()));
+        accepted(policy.check(csr.request()));
+        accepted(policy.check(csr.pem()));
     }
 
     @Test
@@ -49,7 +50,7 @@ class PolicyBuilderTest {
                 .ip("10.0.0.1")
                 .build(kp);
 
-        assertDoesNotThrow(() -> PolicyBuilder.httpsPolicy().build().check(csr.request()));
+        accepted(PolicyBuilder.httpsPolicy().build().check(csr.request()));
     }
 
     @Test
@@ -60,9 +61,7 @@ class PolicyBuilderTest {
                 .keyUsage(KeyUsage.digitalSignature)
                 .build(kp);
 
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class,
-                () -> PolicyBuilder.httpsPolicy().build().check(csr.request()));
+        var ex = violations(PolicyBuilder.httpsPolicy().build().check(csr.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> v.field().startsWith("unknown.san")));
     }
 
@@ -74,9 +73,8 @@ class PolicyBuilderTest {
                 .dns(fromCsr().matching(".*\\.acme\\.com"))
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(ok.request()));
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class, () -> policy.check(bad.request()));
+        accepted(policy.check(ok.request()));
+        var ex = violations(policy.check(bad.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> v.field().equals("san.dNSName")));
     }
 
@@ -87,9 +85,7 @@ class PolicyBuilderTest {
                 .san().dns("app.acme.com").and()
                 .build(kp);
 
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class,
-                () -> PolicyBuilder.httpsPolicy().build().check(csr.request()));
+        var ex = violations(PolicyBuilder.httpsPolicy().build().check(csr.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> v.field().startsWith("unknown.subject")));
     }
 
@@ -100,7 +96,7 @@ class PolicyBuilderTest {
                 .organization(exactly("Acme Corp"))
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(csr.request()));
+        accepted(policy.check(csr.request()));
     }
 
     @Test
@@ -110,7 +106,7 @@ class PolicyBuilderTest {
                 .organization("Acme")
                 .build(kp);
 
-        assertDoesNotThrow(() -> PolicyBuilder.clientAuthPolicy().build().check(csr.request()));
+        accepted(PolicyBuilder.clientAuthPolicy().build().check(csr.request()));
     }
 
     @Test
@@ -120,16 +116,14 @@ class PolicyBuilderTest {
                 .organization("Acme Corp")
                 .build(kp);
 
-        assertDoesNotThrow(() -> PolicyBuilder.signingPolicy().build().check(csr.request()));
+        accepted(PolicyBuilder.signingPolicy().build().check(csr.request()));
     }
 
     @Test
     void signingPolicy_rejectsSan() {
         CsrResult csr = CsrBuilder.httpsCsr().dns("ca.example.com").build(kp);
 
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class,
-                () -> PolicyBuilder.signingPolicy().build().check(csr.request()));
+        var ex = violations(PolicyBuilder.signingPolicy().build().check(csr.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> v.field().startsWith("unknown.san")));
     }
 
@@ -144,7 +138,7 @@ class PolicyBuilderTest {
                 .validity(ValidityRule.fromCsr().max(Duration.ofDays(90)))
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(csr.request()));
+        accepted(policy.check(csr.request()));
     }
 
     @Test
@@ -158,8 +152,7 @@ class PolicyBuilderTest {
                 .validity(ValidityRule.fromCsr().orDefault(Duration.ofDays(90)).max(Duration.ofDays(398)))
                 .build();
 
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class, () -> policy.check(csr.request()));
+        var ex = violations(policy.check(csr.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> v.field().equals("validity")));
     }
 
@@ -167,7 +160,7 @@ class PolicyBuilderTest {
     void validity_defaultWhenCsrOmits() {
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
 
-        assertDoesNotThrow(() -> PolicyBuilder.httpsPolicy().build().check(csr.request()));
+        accepted(PolicyBuilder.httpsPolicy().build().check(csr.request()));
     }
 
     @Test
@@ -177,8 +170,8 @@ class PolicyBuilderTest {
                 .validity(ValidityRule.fromCsr().orCaller())
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(csr.request(), CallerValues.of().validity(Duration.ofDays(14))));
-        assertThrows(PolicyViolationException.class, () -> policy.check(csr.request()));
+        accepted(policy.check(csr.request(), CallerValues.of().validity(Duration.ofDays(14))));
+        violations(policy.check(csr.request()));
     }
 
     @Test
@@ -188,7 +181,7 @@ class PolicyBuilderTest {
                 .validity(Duration.ofDays(1))
                 .build(kp);
 
-        assertDoesNotThrow(() -> PolicyBuilder.httpsPolicy()
+        accepted(PolicyBuilder.httpsPolicy()
                 .validity(Duration.ofDays(90))
                 .build()
                 .check(csr.request()));
@@ -209,7 +202,7 @@ class PolicyBuilderTest {
                 .caIssuers("http://ca.acme.com/acme.crt")
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(csr.request()));
+        accepted(policy.check(csr.request()));
     }
 
     @Test
@@ -225,8 +218,8 @@ class PolicyBuilderTest {
                 .organization(fromCsr().orCaller())
                 .build();
 
-        assertThrows(PolicyViolationException.class, () -> policy.check(csr.request()));
-        assertDoesNotThrow(() -> policy.check(csr.request(), CallerValues.of().organization("Acme West")));
+        violations(policy.check(csr.request()));
+        accepted(policy.check(csr.request(), CallerValues.of().organization("Acme West")));
     }
 
     @Test
@@ -236,9 +229,8 @@ class PolicyBuilderTest {
                 .dns(fromCsr().orCaller().matching(".*\\.acme\\.com"))
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(csr.request(), CallerValues.of().dns("extra.acme.com")));
-        assertThrows(PolicyViolationException.class,
-                () -> policy.check(csr.request(), CallerValues.of().dns("evil.com")));
+        accepted(policy.check(csr.request(), CallerValues.of().dns("extra.acme.com")));
+        violations(policy.check(csr.request(), CallerValues.of().dns("evil.com")));
     }
 
     @Test
@@ -259,7 +251,7 @@ class PolicyBuilderTest {
                 .validity(ValidityRule.fromCsr().orDefault(Duration.ofDays(90)))
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(csr.request()));
+        accepted(policy.check(csr.request()));
     }
 
     @Test
@@ -269,12 +261,10 @@ class PolicyBuilderTest {
                 .san().dns("nope.example.com").email("a@b.c").and()
                 .build(kp);
 
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class,
-                () -> PolicyBuilder.httpsPolicy()
-                        .dns(fromCsr().matching(".*\\.acme\\.com"))
-                        .build()
-                        .check(csr.request()));
+        var ex = violations(PolicyBuilder.httpsPolicy()
+                .dns(fromCsr().matching(".*\\.acme\\.com"))
+                .build()
+                .check(csr.request()));
         assertTrue(ex.violations().size() >= 2);
     }
 
@@ -289,8 +279,7 @@ class PolicyBuilderTest {
                 .country(fromCsr())
                 .build();
 
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class, () -> policy.check(csr.request()));
+        var ex = violations(policy.check(csr.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> v.field().equals("subject.C")));
         assertTrue(ex.violations().stream().anyMatch(v -> ViolationCodes.VALUE_COUNTRY.equals(v.code())));
     }
@@ -298,10 +287,8 @@ class PolicyBuilderTest {
     @Test
     void dnsMatching_hasStableCode() {
         CsrResult bad = CsrBuilder.httpsCsr().dns("app.evil.com").build(kp);
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class,
-                () -> PolicyBuilder.httpsPolicy().dns(fromCsr().matching(".*\\.acme\\.com")).build()
-                        .check(bad.request()));
+        var ex = violations(PolicyBuilder.httpsPolicy().dns(fromCsr().matching(".*\\.acme\\.com")).build()
+                .check(bad.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> ViolationCodes.VALUE_REGEX.equals(v.code())));
     }
 
@@ -311,9 +298,7 @@ class PolicyBuilderTest {
                 .subject().commonName("app").and()
                 .san().dns("app.acme.com").email("svc@acme.com").and()
                 .build(kp);
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class,
-                () -> PolicyBuilder.httpsPolicy().build().check(csr.request()));
+        var ex = violations(PolicyBuilder.httpsPolicy().build().check(csr.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> ViolationCodes.SAN_UNKNOWN.equals(v.code())));
     }
 
@@ -323,9 +308,7 @@ class PolicyBuilderTest {
                 .subject().commonName("a").commonName("b").and()
                 .san().dns("app.acme.com").and()
                 .build(kp);
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class,
-                () -> PolicyBuilder.httpsPolicy().build().check(csr.request()));
+        var ex = violations(PolicyBuilder.httpsPolicy().build().check(csr.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> ViolationCodes.SUBJECT_CARDINALITY.equals(v.code())));
     }
 
@@ -338,7 +321,7 @@ class PolicyBuilderTest {
         IssuancePolicy policy = PolicyBuilder.httpsPolicy()
                 .commonName(fromCsr().optional().maxEntries(2))
                 .build();
-        assertDoesNotThrow(() -> policy.check(csr.request()));
+        accepted(policy.check(csr.request()));
     }
 
     @Test
@@ -350,9 +333,8 @@ class PolicyBuilderTest {
                         ? RestrictionOutcome.allow()
                         : RestrictionOutcome.reject("value.suffix", "must end with .acme.com")))
                 .build();
-        assertDoesNotThrow(() -> policy.check(ok.request()));
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class, () -> policy.check(bad.request()));
+        accepted(policy.check(ok.request()));
+        var ex = violations(policy.check(bad.request()));
         assertTrue(ex.violations().stream().anyMatch(v -> "value.suffix".equals(v.code())));
     }
 
@@ -366,17 +348,14 @@ class PolicyBuilderTest {
                 .commonName(ignoreCsr().orCaller().orDefault("fallback"))
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(csr.request()));
-        Evaluation withDefault = PolicyEngine.evaluate(
-                policy.spec, csr.request(), CallerValues.empty());
-        assertTrue(withDefault.ok(), withDefault.violations::toString);
-        assertTrue(withDefault.subject.toString().contains("fallback"));
-        assertTrue(!withDefault.subject.toString().contains("from-csr"));
+        accepted(policy.check(csr.request()));
+        Evaluation.Ok withDefault = assertInstanceOf(Evaluation.Ok.class, policy.check(csr.request()));
+        assertTrue(withDefault.subject().toString().contains("fallback"));
+        assertTrue(!withDefault.subject().toString().contains("from-csr"));
 
-        Evaluation withCaller = PolicyEngine.evaluate(
-                policy.spec, csr.request(), CallerValues.of().commonName("from-caller"));
-        assertTrue(withCaller.ok(), withCaller.violations::toString);
-        assertTrue(withCaller.subject.toString().contains("from-caller"));
+        Evaluation.Ok withCaller = assertInstanceOf(
+                Evaluation.Ok.class, policy.check(csr.request(), CallerValues.of().commonName("from-caller")));
+        assertTrue(withCaller.subject().toString().contains("from-caller"));
     }
 
     @Test
@@ -387,7 +366,7 @@ class PolicyBuilderTest {
         IssuancePolicy restored = original.snapshot().toPolicy();
         assertTrue(restored.snapshot().subject().get("O").mode().equals("ignoreCsr"));
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
-        assertDoesNotThrow(() -> restored.check(csr.request(), CallerValues.of().organization("West")));
+        accepted(restored.check(csr.request(), CallerValues.of().organization("West")));
     }
 
     @Test
@@ -416,6 +395,22 @@ class PolicyBuilderTest {
                 .endEntity()
                 .validity(Duration.ofDays(90))
                 .build();
-        assertDoesNotThrow(() -> policy.check(csr));
+        accepted(policy.check(csr));
+    }
+
+    @Test
+    void spec_isPackagePrivate() throws Exception {
+        int modifiers = IssuancePolicy.class.getDeclaredField("spec").getModifiers();
+        assertFalse(Modifier.isPublic(modifiers));
+        assertFalse(Modifier.isProtected(modifiers));
+        assertFalse(Modifier.isPrivate(modifiers));
+    }
+
+    private static Evaluation.Violations violations(Evaluation evaluation) {
+        return assertInstanceOf(Evaluation.Violations.class, evaluation);
+    }
+
+    private static void accepted(Evaluation evaluation) {
+        assertInstanceOf(Evaluation.Ok.class, evaluation);
     }
 }

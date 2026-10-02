@@ -1,6 +1,7 @@
 package io.github.tomasbriza.tseal.policy.restriction;
 
-public sealed interface RestrictionOutcome {
+public sealed interface RestrictionOutcome
+        permits RestrictionOutcome.Allow, RestrictionOutcome.Reject {
 
     public record Allow() implements RestrictionOutcome {}
 

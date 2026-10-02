@@ -68,7 +68,12 @@ public record PolicySnapshot(
 
     public static PolicySnapshot from(IssuancePolicy policy) {
         Objects.requireNonNull(policy, "policy");
-        PolicyAccumulator acc = policy.spec;
+        return policy.snapshot();
+    }
+
+    /** Captures a frozen accumulator. Callers use {@link IssuancePolicy#snapshot()}. */
+    public static PolicySnapshot from(PolicyAccumulator acc) {
+        Objects.requireNonNull(acc, "accumulator");
 
         Map<String, FieldRuleSnapshot> subject = new LinkedHashMap<>();
         acc.subjectRules.forEach((oid, rule) -> subject.put(subjectKey(oid), FieldRuleSnapshot.from(rule)));

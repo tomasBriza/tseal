@@ -5,7 +5,7 @@ import io.github.tomasbriza.tseal.key.KeyAlgorithm;
 import io.github.tomasbriza.tseal.key.KeyPairFactory;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
 import io.github.tomasbriza.tseal.policy.PolicyBuilder;
-import io.github.tomasbriza.tseal.policy.PolicyViolationException;
+import io.github.tomasbriza.tseal.policy.Evaluation;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -14,8 +14,7 @@ import java.security.KeyPair;
 
 import static io.github.tomasbriza.tseal.policy.Rules.fromCsr;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RestrictionRulesTest {
@@ -44,11 +43,10 @@ class RestrictionRulesTest {
                 .dns(fromCsr().restrict("acmeDns"))
                 .build();
 
-        assertDoesNotThrow(() -> policy.check(
+        assertInstanceOf(Evaluation.Ok.class, policy.check(
                 CsrBuilder.httpsCsr().dns("app.acme.com").build(kp).request()));
-        PolicyViolationException ex = assertThrows(
-                PolicyViolationException.class,
-                () -> policy.check(CsrBuilder.httpsCsr().dns("nope.example.com").build(kp).request()));
+        var ex = assertInstanceOf(Evaluation.Violations.class, policy.check(
+                CsrBuilder.httpsCsr().dns("nope.example.com").build(kp).request()));
         assertTrue(ex.violations().stream().anyMatch(v -> "value.acmeDns".equals(v.code())));
     }
 
@@ -60,9 +58,9 @@ class RestrictionRulesTest {
         IssuancePolicy policy = PolicyBuilder.httpsPolicy()
                 .dns(fromCsr().restrict("suffix"))
                 .build();
-        assertDoesNotThrow(() -> policy.check(
+        assertInstanceOf(Evaluation.Ok.class, policy.check(
                 CsrBuilder.httpsCsr().dns("x.acme.com").build(kp).request()));
-        assertThrows(PolicyViolationException.class, () -> policy.check(
+        assertInstanceOf(Evaluation.Violations.class, policy.check(
                 CsrBuilder.httpsCsr().dns("x.example.com").build(kp).request()));
     }
 
@@ -74,9 +72,9 @@ class RestrictionRulesTest {
                 .dns(fromCsr().restrict("acmeDns"))
                 .build();
         IssuancePolicy restored = original.snapshot().toPolicy();
-        assertDoesNotThrow(() -> restored.check(
+        assertInstanceOf(Evaluation.Ok.class, restored.check(
                 CsrBuilder.httpsCsr().dns("app.acme.com").build(kp).request()));
-        assertThrows(PolicyViolationException.class, () -> restored.check(
+        assertInstanceOf(Evaluation.Violations.class, restored.check(
                 CsrBuilder.httpsCsr().dns("nope.example.com").build(kp).request()));
     }
 

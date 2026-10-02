@@ -11,7 +11,7 @@ import java.util.Objects;
 
 public final class IssuancePolicy {
 
-    public final PolicyAccumulator spec;
+    final PolicyAccumulator spec;
 
     public IssuancePolicy(PolicyAccumulator spec) {
         if (spec.validity == null) {
@@ -21,25 +21,26 @@ public final class IssuancePolicy {
         this.spec = spec;
     }
 
-    public void check(PKCS10CertificationRequest csr) {
-        check(csr, CallerValues.empty());
+    /** {@link Evaluation.Ok} or {@link Evaluation.Violations}. A policy miss does not throw. */
+    public Evaluation check(PKCS10CertificationRequest csr) {
+        return check(csr, CallerValues.empty());
     }
 
-    public void check(PKCS10CertificationRequest csr, CallerValues caller) {
-        PolicyEngine.check(spec, csr, caller);
+    public Evaluation check(PKCS10CertificationRequest csr, CallerValues caller) {
+        return PolicyEngine.evaluate(spec, csr, caller == null ? CallerValues.empty() : caller);
     }
 
-    public void check(String pem) {
-        check(pem, CallerValues.empty());
+    public Evaluation check(String pem) {
+        return check(pem, CallerValues.empty());
     }
 
-    public void check(String pem, CallerValues caller) {
-        PolicyEngine.check(spec, CsrView.parsePem(pem), caller);
+    public Evaluation check(String pem, CallerValues caller) {
+        return PolicyEngine.evaluate(spec, CsrView.parsePem(pem), caller == null ? CallerValues.empty() : caller);
     }
 
     /** Format-agnostic interchange for codecs (JSON, …). */
     public PolicySnapshot snapshot() {
-        return PolicySnapshot.from(this);
+        return PolicySnapshot.from(spec);
     }
 
     public static IssuancePolicy fromSnapshot(PolicySnapshot snapshot) {

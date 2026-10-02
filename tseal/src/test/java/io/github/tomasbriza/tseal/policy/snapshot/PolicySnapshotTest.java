@@ -4,6 +4,7 @@ import io.github.tomasbriza.tseal.csr.CsrBuilder;
 import io.github.tomasbriza.tseal.csr.CsrResult;
 import io.github.tomasbriza.tseal.key.KeyAlgorithm;
 import io.github.tomasbriza.tseal.key.KeyPairFactory;
+import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
 import io.github.tomasbriza.tseal.policy.PolicyBuilder;
 import io.github.tomasbriza.tseal.policy.ValidityRule;
@@ -18,6 +19,7 @@ import static io.github.tomasbriza.tseal.policy.Rules.exactly;
 import static io.github.tomasbriza.tseal.policy.Rules.fromCsr;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -37,7 +39,7 @@ class PolicySnapshotTest {
                 .build();
 
         IssuancePolicy restored = original.snapshot().toPolicy();
-        assertDoesNotThrow(() -> restored.check(csr.request()));
+        assertInstanceOf(Evaluation.Ok.class, restored.check(csr.request()));
         assertEquals(original.snapshot(), restored.snapshot());
         assertEquals(PolicySnapshot.SCHEMA_VERSION, original.snapshot().version());
     }
@@ -114,7 +116,7 @@ class PolicySnapshotTest {
                 .snapshot();
         IssuancePolicy merged = base.merge(overlay).toPolicy();
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
-        assertDoesNotThrow(() -> merged.check(csr.request()));
+        assertInstanceOf(Evaluation.Ok.class, merged.check(csr.request()));
         assertEquals("exactly", merged.snapshot().subject().get("O").mode());
         assertEquals("Acme West", merged.snapshot().subject().get("O").exact());
         assertTrue(merged.snapshot().san().containsKey("dns"));

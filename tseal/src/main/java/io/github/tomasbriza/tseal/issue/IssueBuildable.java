@@ -23,5 +23,5 @@ public interface IssueBuildable {
     IssueBuildable using(X509Certificate issuerCertificate, ContentSigner signer);
     IssueBuildable selfSigned(PrivateKey subjectKey);
     IssueBuildable selfSigned(KeyPair subjectKeyPair);
-    IssuedCertificate issue();
+    IssueResult issue();
 }

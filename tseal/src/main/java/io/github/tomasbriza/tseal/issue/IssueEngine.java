@@ -1,10 +1,8 @@
 package io.github.tomasbriza.tseal.issue;
 
 import io.github.tomasbriza.tseal.policy.CallerValues;
+import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
-import io.github.tomasbriza.tseal.policy.PolicyViolationException;
-import io.github.tomasbriza.tseal.policy.engine.Evaluation;
-import io.github.tomasbriza.tseal.policy.engine.PolicyEngine;
 
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
@@ -52,9 +50,10 @@ public final class IssueEngine {
         }
     }
 
-    private IssueEngine() {}
+    private IssueEngine() {
+    }
 
-    public static IssuedCertificate issue(
+    public static IssueResult issue(
             PKCS10CertificationRequest csr,
             IssuancePolicy policy,
             CallerValues caller,
@@ -80,50 +79,50 @@ public final class IssueEngine {
         }
         verifyCsrSignature(csr);
         CallerValues values = caller == null ? CallerValues.empty() : caller;
-        Evaluation evaluation = PolicyEngine.evaluate(policy.spec, csr, values);
-        if (!evaluation.ok()) {
-            throw new PolicyViolationException(evaluation.violations);
-        }
-        if (evaluation.validity == null) {
-            throw new IllegalStateException("policy produced no validity");
-        }
-        if (!selfSigned) {
-            requireCaIssuer(issuerCertificate);
-        }
-
-        PublicKey subjectPublicKey = subjectPublicKey(csr);
-        Instant notBefore = clock.instant().minus(backdate);
-        Instant notAfter = notBefore.plus(evaluation.validity);
-        BigInteger serialNumber = serial != null ? serial : randomSerial();
-        X500Name issuerName = selfSigned
-                ? evaluation.subject
-                : issuerName(issuerCertificate);
-
-        try {
-            X509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
-                    issuerName,
-                    serialNumber,
-                    Date.from(notBefore),
-                    Date.from(notAfter),
-                    evaluation.subject,
-                    subjectPublicKey);
-
-            copyPolicyExtensions(builder, evaluation.extensions);
-            if (customizer != null) {
-                customizer.accept(values, new RawIssuedCertificateImpl(builder));
+        switch (policy.check(csr, values)) {
+            case Evaluation.Violations rejected -> {
+                return new IssueResult.Rejected(rejected.violations());
             }
-            addKeyIdentifiers(builder, subjectPublicKey, issuerCertificate, selfSigned);
+            case Evaluation.Ok evaluation -> {
+                if (!selfSigned) {
+                    requireCaIssuer(issuerCertificate);
+                }
 
-            ContentSigner signer = explicitSigner != null
-                    ? explicitSigner
-                    : contentSigner(selfSigned ? subjectPublicKey : issuerCertificate.getPublicKey(), issuerKey);
-            X509CertificateHolder holder = builder.build(signer);
-            X509Certificate certificate = new JcaX509CertificateConverter()
-                    .setProvider(BouncyCastleProvider.PROVIDER_NAME)
-                    .getCertificate(holder);
-            return new IssuedCertificate(certificate, toPem(certificate));
-        } catch (OperatorCreationException | CertificateException | IOException e) {
-            throw new IllegalStateException("Certificate issuance failed", e);
+                PublicKey subjectPublicKey = subjectPublicKey(csr);
+                Instant notBefore = clock.instant().minus(backdate);
+                Instant notAfter = notBefore.plus(evaluation.validity());
+                BigInteger serialNumber = serial != null ? serial : randomSerial();
+                X500Name issuerName = selfSigned
+                        ? evaluation.subject()
+                        : issuerName(issuerCertificate);
+
+                try {
+                    X509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
+                            issuerName,
+                            serialNumber,
+                            Date.from(notBefore),
+                            Date.from(notAfter),
+                            evaluation.subject(),
+                            subjectPublicKey);
+
+                    copyPolicyExtensions(builder, evaluation.extensions());
+                    if (customizer != null) {
+                        customizer.accept(values, new RawIssuedCertificateImpl(builder));
+                    }
+                    addKeyIdentifiers(builder, subjectPublicKey, issuerCertificate, selfSigned);
+
+                    ContentSigner signer = explicitSigner != null
+                            ? explicitSigner
+                            : contentSigner(selfSigned ? subjectPublicKey : issuerCertificate.getPublicKey(), issuerKey);
+                    X509CertificateHolder holder = builder.build(signer);
+                    X509Certificate certificate = new JcaX509CertificateConverter()
+                            .setProvider(BouncyCastleProvider.PROVIDER_NAME)
+                            .getCertificate(holder);
+                    return new IssueResult.Issued(certificate, toPem(certificate));
+                } catch (OperatorCreationException | CertificateException | IOException e) {
+                    throw new IllegalStateException("Certificate issuance failed", e);
+                }
+            }
         }
     }
 

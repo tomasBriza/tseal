@@ -2,8 +2,8 @@ package io.github.tomasbriza.tseal.policy.engine;
 
 import io.github.tomasbriza.tseal.csr.Oids;
 import io.github.tomasbriza.tseal.policy.CallerValues;
+import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.policy.FieldRule;
-import io.github.tomasbriza.tseal.policy.PolicyViolationException;
 import io.github.tomasbriza.tseal.policy.ValidityRule;
 import io.github.tomasbriza.tseal.policy.ViolationCodes;
 import io.github.tomasbriza.tseal.policy.restriction.RestrictionOutcome;
@@ -40,27 +40,20 @@ public class PolicyEngine {
 
     private PolicyEngine() {}
 
-    public static void check(PolicyAccumulator spec, PKCS10CertificationRequest csr, CallerValues caller) {
-        Evaluation evaluation = evaluate(spec, csr, caller == null ? CallerValues.empty() : caller);
-        if (!evaluation.ok()) {
-            throw new PolicyViolationException(evaluation.violations);
-        }
-    }
-
     public static Evaluation evaluate(PolicyAccumulator spec, PKCS10CertificationRequest csr, CallerValues caller) {
         CsrView view = CsrView.parse(csr);
-        Evaluation out = new Evaluation();
+        EvaluationDraft out = new EvaluationDraft();
         evaluateSubject(spec, view, caller, out);
         evaluateSan(spec, view, caller, out);
         evaluateValidity(spec, view, caller, out);
         evaluateUnknownExtensions(spec, view, out);
         copyRequiredExtensions(spec, view, out);
         materializeCaExtensions(spec, view, out);
-        return out;
+        return out.finish();
     }
 
     private static void evaluateSubject(
-            PolicyAccumulator spec, CsrView view, CallerValues caller, Evaluation out) {
+            PolicyAccumulator spec, CsrView view, CallerValues caller, EvaluationDraft out) {
         X500NameBuilder names = new X500NameBuilder(BCStyle.INSTANCE);
         for (var entry : spec.subjectRules.entrySet()) {
             ASN1ObjectIdentifier oid = entry.getKey();
@@ -107,7 +100,7 @@ public class PolicyEngine {
     }
 
     private static void evaluateSan(
-            PolicyAccumulator spec, CsrView view, CallerValues caller, Evaluation out) {
+            PolicyAccumulator spec, CsrView view, CallerValues caller, EvaluationDraft out) {
         List<GeneralName> san = new ArrayList<>();
         addSanStrings(spec, GeneralName.dNSName, "san.dNSName", view.dns, caller.dns, san, out);
         addSanStrings(spec, GeneralName.iPAddress, "san.iPAddress", view.ip, caller.ip, san, out);
@@ -159,7 +152,7 @@ public class PolicyEngine {
             List<String> csrValues,
             List<String> callerValues,
             List<GeneralName> san,
-            Evaluation out) {
+            EvaluationDraft out) {
         FieldRule rule = spec.sanTypeRules.get(tag);
         if (rule == null) {
             return;
@@ -171,7 +164,7 @@ public class PolicyEngine {
     }
 
     private static void evaluateOtherNames(
-            PolicyAccumulator spec, CsrView view, List<GeneralName> san, Evaluation out) {
+            PolicyAccumulator spec, CsrView view, List<GeneralName> san, EvaluationDraft out) {
         FieldRule generic = spec.sanTypeRules.get(GeneralName.otherName);
         for (var entry : spec.otherNameRules.entrySet()) {
             ASN1ObjectIdentifier oid = entry.getKey();
@@ -192,7 +185,7 @@ public class PolicyEngine {
     }
 
     private static void evaluateValidity(
-            PolicyAccumulator spec, CsrView view, CallerValues caller, Evaluation out) {
+            PolicyAccumulator spec, CsrView view, CallerValues caller, EvaluationDraft out) {
         ValidityRule rule = spec.validity;
         Duration csrValue = view.requestedValidity;
         Duration callerValue = caller.validity;
@@ -242,7 +235,7 @@ public class PolicyEngine {
         out.validity = winning;
     }
 
-    private static void evaluateUnknownExtensions(PolicyAccumulator spec, CsrView view, Evaluation out) {
+    private static void evaluateUnknownExtensions(PolicyAccumulator spec, CsrView view, EvaluationDraft out) {
         Set<ASN1ObjectIdentifier> owned = ownedOids(spec);
         for (ASN1ObjectIdentifier oid : view.requestedExtensions.keySet()) {
             if (owned.contains(oid) || spec.ignoreCsrExtensions.contains(oid) || spec.copyFromCsr.containsKey(oid)) {
@@ -254,7 +247,7 @@ public class PolicyEngine {
         }
     }
 
-    private static void copyRequiredExtensions(PolicyAccumulator spec, CsrView view, Evaluation out) {
+    private static void copyRequiredExtensions(PolicyAccumulator spec, CsrView view, EvaluationDraft out) {
         for (var entry : spec.copyFromCsr.entrySet()) {
             ASN1ObjectIdentifier oid = entry.getKey();
             boolean required = entry.getValue();
@@ -266,7 +259,7 @@ public class PolicyEngine {
         }
     }
 
-    private static void materializeCaExtensions(PolicyAccumulator spec, CsrView view, Evaluation out) {
+    private static void materializeCaExtensions(PolicyAccumulator spec, CsrView view, EvaluationDraft out) {
         try {
             ExtensionsGenerator gen = new ExtensionsGenerator();
             Integer ku = keyUsageBits(spec, view.publicKey);
@@ -370,13 +363,13 @@ public class PolicyEngine {
         return owned;
     }
 
-    public static List<String> resolveList(
+    static List<String> resolveList(
             FieldRule rule,
             List<String> csrValues,
             List<String> callerValues,
             String field,
             boolean subject,
-            Evaluation out) {
+            EvaluationDraft out) {
         String forbiddenCode = subject ? ViolationCodes.SUBJECT_FORBIDDEN : ViolationCodes.SAN_FORBIDDEN;
         String requiredCode = subject ? ViolationCodes.SUBJECT_REQUIRED : ViolationCodes.SAN_REQUIRED;
         String cardinalityCode = subject ? ViolationCodes.SUBJECT_CARDINALITY : ViolationCodes.SAN_CARDINALITY;
@@ -440,7 +433,7 @@ public class PolicyEngine {
         return ok;
     }
 
-    private static String constrain(FieldRule rule, String value, String field, Evaluation out) {
+    private static String constrain(FieldRule rule, String value, String field, EvaluationDraft out) {
         if (value == null) {
             return null;
         }

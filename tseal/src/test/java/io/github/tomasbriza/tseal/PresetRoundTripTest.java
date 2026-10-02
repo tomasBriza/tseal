@@ -3,7 +3,8 @@ package io.github.tomasbriza.tseal;
 import io.github.tomasbriza.tseal.csr.CsrBuilder;
 import io.github.tomasbriza.tseal.csr.CsrResult;
 import io.github.tomasbriza.tseal.issue.CertificateIssuer;
-import io.github.tomasbriza.tseal.issue.IssuedCertificate;
+import io.github.tomasbriza.tseal.issue.IssueResult;
+import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.key.KeyAlgorithm;
 import io.github.tomasbriza.tseal.key.KeyPairFactory;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
@@ -15,22 +16,23 @@ import org.junit.jupiter.api.Test;
 import java.security.KeyPair;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PresetRoundTripTest {
 
     private KeyPair caKeys;
-    private IssuedCertificate ca;
+    private IssueResult.Issued ca;
 
     @BeforeEach
     void issueRoot() {
         caKeys = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
         var csr = CsrBuilder.signingCsr().commonName("Round-trip Root").build(caKeys);
-        ca = CertificateIssuer.issue()
+        ca = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.signingPolicy().unboundedPathLen().build())
                 .selfSigned(caKeys)
-                .issue();
+                .issue());
     }
 
     @Test
@@ -42,12 +44,12 @@ class PresetRoundTripTest {
                 .build(leafKeys);
         IssuancePolicy policy = PolicyBuilder.httpsPolicy().build();
 
-        policy.check(csr.request());
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        assertInstanceOf(Evaluation.Ok.class, policy.check(csr.request()));
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(policy)
                 .using(ca.certificate(), caKeys.getPrivate())
-                .issue();
+                .issue());
 
         leaf.certificate().verify(ca.certificate().getPublicKey());
         assertFalse(leaf.certificate().getBasicConstraints() >= 0);
@@ -61,12 +63,12 @@ class PresetRoundTripTest {
                 .build(leafKeys);
         IssuancePolicy policy = PolicyBuilder.clientAuthPolicy().build();
 
-        policy.check(csr.request());
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        assertInstanceOf(Evaluation.Ok.class, policy.check(csr.request()));
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(policy)
                 .using(ca.certificate(), caKeys.getPrivate())
-                .issue();
+                .issue());
 
         leaf.certificate().verify(ca.certificate().getPublicKey());
         assertFalse(leaf.certificate().getBasicConstraints() >= 0);
@@ -80,14 +82,18 @@ class PresetRoundTripTest {
                 .build(intKeys);
         IssuancePolicy policy = PolicyBuilder.signingPolicy().pathLen(0).build();
 
-        policy.check(csr.request());
-        IssuedCertificate intermediate = CertificateIssuer.issue()
+        assertInstanceOf(Evaluation.Ok.class, policy.check(csr.request()));
+        IssueResult.Issued intermediate = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(policy)
                 .using(ca.certificate(), caKeys.getPrivate())
-                .issue();
+                .issue());
 
         intermediate.certificate().verify(ca.certificate().getPublicKey());
         assertTrue(intermediate.certificate().getBasicConstraints() >= 0);
+    }
+
+    private static IssueResult.Issued issued(IssueResult result) {
+        return assertInstanceOf(IssueResult.Issued.class, result);
     }
 }

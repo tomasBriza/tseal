@@ -1,102 +1,28 @@
 # Policy serialization
 
-An `IssuancePolicy` can be written to a document and read back. The interchange type is
-`PolicySnapshot` in `io.github.tomasbriza.tseal.policy.snapshot` (no JSON library). Formats
-implement `PolicyCodec` in the same package.
+Core type is `PolicySnapshot` (`io.github.tomasbriza.tseal.policy.snapshot`). `PolicyCodec` is the SPI: `write(IssuancePolicy)` and `read(String)`. Jackson is not a core dependency.
 
-Jackson is **not** a core dependency. JSON lives in the `tseal-policy-json` module.
+`IssuancePolicy.snapshot()` produces a `PolicySnapshot`. `PolicySnapshot.toPolicy()` restores it with no codec.
 
-```
-IssuancePolicy ──snapshot()──► PolicySnapshot
-                                     │
-                            PolicyCodec (SPI)
-                                     │
-                              JsonPolicyCodec
-```
+JSON: `io.github.tomasbriza:tseal-policy-json`, class `JsonPolicyCodec`. `read` / `write` on `String`. `read` / `write` on `Path` throw `IOException`. `read(document, PolicyDocumentResolver)` and `read(path, resolver)` resolve `extends`. Pretty-printed. Unknown properties ignored. Empty collections and `false` omitted.
 
-## JSON module
+`version` is the schema. Writers emit `2`. Readers accept `1` and `2`. Anything higher throws. Version 1 has `matching` / `oneOf` / `maxLength` on field rules and no `restrictions` or `extends`.
 
-Coordinates: `io.github.tomasbriza:tseal` (core) and `io.github.tomasbriza:tseal-policy-json`
-(Gradle `:tseal` / `:tseal-policy-json`). The root project is an aggregator only.
+After `extends` merge, `validity` is required. Presets write their default (`"orDefault": "P90D"` for HTTPS). Omitted validity is rejected. The library does not insert 90 days.
 
-```java
-PolicyCodec json = new JsonPolicyCodec();
+`extends` is a document id. Overlay keys replace. `subject`, `san`, and `otherNames` merge per key.
 
-String text = json.write(policy);
-IssuancePolicy restored = json.read(text);
+| Field                       |                                                                                                                                                       |
+|-----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `version`                   | write 2, read 1–2                                                                                                                                     |
+| `extends`                   | base document id; needs `PolicyDocumentResolver`                                                                                                      |
+| `subject` keys              | `CN`, `O`, `OU`, `C`, `L`, `ST`, `E`, or a dotted OID                                                                                                 |
+| `san` keys                  | `dns`, `ip`, `email`, `uri`, `otherName`, or a `GeneralName` tag                                                                                      |
+| `otherNames`                | otherName type OID → field rule                                                                                                                       |
+| `mode`                      | `fromCsr`, `exactly`, `forbidden`, `ignoreCsr`                                                                                                        |
+| `restrictions`              | `[{ "type", "params", "values" }]`. Built-ins: `regex`, `oneOf`, `maxLength`, `country`. Custom: `RestrictionRules.builtin().bind("name", predicate)` |
+| `minEntries` / `maxEntries` | subject default max is 1                                                                                                                              |
+| durations                   | ISO-8601 (`P90D`, `PT12H`)                                                                                                                            |
+| extra extensions            | `{ "oid", "critical", "der" }` — Base64 DER of the extension value                                                                                    |
 
-json.write(policy, Path.of("https-policy.json"));   // JsonPolicyCodec only
-IssuancePolicy fromFile = json.read(Path.of("https-policy.json"));
-```
-
-Pretty-printed by default. Unknown JSON properties are ignored. Empty collections and
-`false` flags are omitted.
-
-**Schema version.** `version` is the document schema. Writers emit `2`. Readers accept
-`1` and `2`. Higher versions are rejected. Version 1 documents (`matching` / `oneOf` /
-`maxLength` on field rules, no `restrictions` / `extends`) still load.
-
-A document **must** include `validity` after merge. Presets already have a default rule,
-and that rule is written out (`"orDefault": "P90D"` for HTTPS). Hand-written JSON that
-omits `validity` is rejected; the library does not guess 90 days.
-
-`extends` is a document id. Resolve it with `JsonPolicyCodec.read(json, id -> …)`. Overlay
-keys replace; `subject` / `san` / `otherNames` merge per key.
-
-```json
-{
-  "version" : 2,
-  "subject" : {
-    "CN" : {
-      "mode" : "fromCsr",
-      "optional" : true
-    }
-  },
-  "san" : {
-    "dns" : {
-      "mode" : "fromCsr",
-      "optional" : true
-    },
-    "ip" : {
-      "mode" : "fromCsr",
-      "optional" : true
-    }
-  },
-  "atLeastOneSan" : true,
-  "validity" : {
-    "mode" : "fromCsr",
-    "optional" : true,
-    "orCaller" : true,
-    "orDefault" : "P90D"
-  },
-  "keyUsage" : {
-    "adaptive" : true
-  },
-  "extendedKeyUsage" : [ "1.3.6.1.5.5.7.3.1" ],
-  "basicConstraints" : {
-    "endEntity" : true
-  }
-}
-```
-
-| Field | Notes |
-|-------|--------|
-| `version` | Schema: write 2, read 1–2 |
-| `extends` | Base document id; requires `PolicyDocumentResolver` |
-| `subject` keys | `CN`, `O`, `OU`, `C`, `L`, `ST`, `E`, or a dotted OID |
-| `san` keys | `dns`, `ip`, `email`, `uri`, `otherName`, or a `GeneralName` tag number |
-| `otherNames` | map of otherName type OID → field rule |
-| rule `mode` | `fromCsr`, `exactly`, `forbidden`, `ignoreCsr` |
-| `restrictions` | `[{ "type", "params", "values" }]`. Built-ins: `regex`, `oneOf`, `maxLength`, `country`. Custom types: `RestrictionRules.builtin().bind("name", bean::isAllowed)` |
-| `minEntries` / `maxEntries` | Cardinality (subject default max is 1) |
-| durations | ISO-8601 (`P90D`, `PT12H`) |
-| extra extensions | `{ "oid", "critical", "der" }` — Base64 DER of the ASN.1 value |
-
-Another format (YAML, …) implements `PolicyCodec` and reads/writes `PolicySnapshot`. Do
-not add that library to core.
-
-Core-only round-trip, no JSON:
-
-```java
-IssuancePolicy restored = policy.snapshot().toPolicy();
-```
+Another format implements `PolicyCodec` over `PolicySnapshot`. Do not add it to `:tseal`.

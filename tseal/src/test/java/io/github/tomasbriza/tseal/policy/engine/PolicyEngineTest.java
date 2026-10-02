@@ -5,6 +5,7 @@ import io.github.tomasbriza.tseal.csr.CsrResult;
 import io.github.tomasbriza.tseal.key.KeyAlgorithm;
 import io.github.tomasbriza.tseal.key.KeyPairFactory;
 import io.github.tomasbriza.tseal.policy.CallerValues;
+import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.policy.PolicyBuilder;
 import io.github.tomasbriza.tseal.policy.builder.HttpsPolicyBuilder;
 
@@ -21,6 +22,7 @@ import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,13 +32,12 @@ class PolicyEngineTest {
     void https_adaptiveKeyUsage_ec_digitalSignatureOnly() {
         KeyPair kp = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.example.com").build(kp);
-        Evaluation ev = evaluateHttps(csr);
+        Evaluation.Ok ev = evaluateHttps(csr);
 
-        assertTrue(ev.ok(), ev.violations::toString);
-        assertNotNull(ev.keyUsageBits);
-        assertTrue((ev.keyUsageBits & KeyUsage.digitalSignature) != 0);
-        assertEquals(0, ev.keyUsageBits & KeyUsage.keyEncipherment);
-        BasicConstraints bc = BasicConstraints.fromExtensions(ev.extensions);
+        assertNotNull(ev.keyUsageBits());
+        assertTrue((ev.keyUsageBits() & KeyUsage.digitalSignature) != 0);
+        assertEquals(0, ev.keyUsageBits() & KeyUsage.keyEncipherment);
+        BasicConstraints bc = BasicConstraints.fromExtensions(ev.extensions());
         assertFalse(bc.isCA());
     }
 
@@ -44,10 +45,9 @@ class PolicyEngineTest {
     void https_adaptiveKeyUsage_rsa_includesKeyEncipherment() {
         KeyPair kp = KeyPairFactory.generate(KeyAlgorithm.RSA_2048);
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.example.com").build(kp);
-        Evaluation ev = evaluateHttps(csr);
+        Evaluation.Ok ev = evaluateHttps(csr);
 
-        assertTrue(ev.ok(), ev.violations::toString);
-        assertTrue((ev.keyUsageBits & KeyUsage.keyEncipherment) != 0);
+        assertTrue((ev.keyUsageBits() & KeyUsage.keyEncipherment) != 0);
     }
 
     @Test
@@ -60,17 +60,16 @@ class PolicyEngineTest {
                 .ocsp("http://ocsp.acme.com")
                 .caIssuers("http://ca.acme.com/acme.crt")
                 .build();
-        Evaluation ev = PolicyEngine.evaluate(acc.spec, csr.request(), CallerValues.empty());
+        Evaluation.Ok ev = assertInstanceOf(Evaluation.Ok.class, acc.check(csr.request()));
 
-        assertTrue(ev.ok(), ev.violations::toString);
-        CRLDistPoint crl = CRLDistPoint.fromExtensions(ev.extensions);
+        CRLDistPoint crl = CRLDistPoint.fromExtensions(ev.extensions());
         assertEquals(2, crl.getDistributionPoints().length);
-        AuthorityInformationAccess aia = AuthorityInformationAccess.fromExtensions(ev.extensions);
+        AuthorityInformationAccess aia = AuthorityInformationAccess.fromExtensions(ev.extensions());
         assertEquals(2, aia.getAccessDescriptions().length);
         assertEquals(AccessDescription.id_ad_ocsp, aia.getAccessDescriptions()[0].getAccessMethod());
         assertEquals(AccessDescription.id_ad_caIssuers, aia.getAccessDescriptions()[1].getAccessMethod());
-        assertFalse(ev.extensions.getExtension(Extension.cRLDistributionPoints).isCritical());
-        assertFalse(ev.extensions.getExtension(Extension.authorityInfoAccess).isCritical());
+        assertFalse(ev.extensions().getExtension(Extension.cRLDistributionPoints).isCritical());
+        assertFalse(ev.extensions().getExtension(Extension.authorityInfoAccess).isCritical());
     }
 
     @Test
@@ -80,33 +79,33 @@ class PolicyEngineTest {
                 .dns("app.example.com")
                 .validity(Duration.ofDays(30))
                 .build(kp);
-        Evaluation ev = evaluateHttps(csr);
-        assertTrue(ev.ok(), ev.violations::toString);
-        assertEquals(Duration.ofDays(30), ev.validity);
+        Evaluation.Ok ev = evaluateHttps(csr);
+        assertEquals(Duration.ofDays(30), ev.validity());
     }
 
     @Test
     void validity_default_whenOmitted() {
         KeyPair kp = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.example.com").build(kp);
-        Evaluation ev = evaluateHttps(csr);
-        assertTrue(ev.ok(), ev.violations::toString);
-        assertEquals(Duration.ofDays(90), ev.validity);
+        Evaluation.Ok ev = evaluateHttps(csr);
+        assertEquals(Duration.ofDays(90), ev.validity());
     }
 
     @Test
     void signing_pathLenZero() {
         KeyPair kp = KeyPairFactory.generate(KeyAlgorithm.RSA_2048);
         CsrResult csr = CsrBuilder.signingCsr().commonName("CA").build(kp);
-        Evaluation ev = PolicyEngine.evaluate(
-                PolicyBuilder.signingPolicy().build().spec, csr.request(), CallerValues.empty());
-        assertTrue(ev.ok(), ev.violations::toString);
-        BasicConstraints bc = BasicConstraints.fromExtensions(ev.extensions);
+        Evaluation.Ok ev = assertInstanceOf(
+                Evaluation.Ok.class,
+                PolicyBuilder.signingPolicy().build().check(csr.request()));
+        BasicConstraints bc = BasicConstraints.fromExtensions(ev.extensions());
         assertTrue(bc.isCA());
         assertEquals(0, bc.getPathLenConstraint().intValue());
     }
 
-    private static Evaluation evaluateHttps(CsrResult csr) {
-        return PolicyEngine.evaluate(PolicyBuilder.httpsPolicy().build().spec, csr.request(), CallerValues.empty());
+    private static Evaluation.Ok evaluateHttps(CsrResult csr) {
+        return assertInstanceOf(
+                Evaluation.Ok.class,
+                PolicyBuilder.httpsPolicy().build().check(csr.request()));
     }
 }

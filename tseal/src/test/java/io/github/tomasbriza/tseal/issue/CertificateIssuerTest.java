@@ -7,7 +7,6 @@ import io.github.tomasbriza.tseal.key.KeyPairFactory;
 import io.github.tomasbriza.tseal.policy.CallerValues;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
 import io.github.tomasbriza.tseal.policy.PolicyBuilder;
-import io.github.tomasbriza.tseal.policy.PolicyViolationException;
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERUTF8String;
@@ -33,6 +32,7 @@ import static io.github.tomasbriza.tseal.policy.Rules.ignoreCsr;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -44,7 +44,7 @@ class CertificateIssuerTest {
 
     @Test
     void selfSignedCa_thenHttpsLeaf() throws Exception {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         assertTrue(ca.certificate().getBasicConstraints() >= 0);
         assertTrue(ca.pem().contains("BEGIN CERTIFICATE"));
 
@@ -56,11 +56,11 @@ class CertificateIssuerTest {
                 .crl("http://crl.acme.com/acme.crl")
                 .build();
 
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(policy)
                 .using(ca.certificate(), caKeys.getPrivate())
-                .issue();
+                .issue());
 
         leaf.certificate().verify(ca.certificate().getPublicKey());
         assertArrayEquals(leafKeys.getPublic().getEncoded(), leaf.certificate().getPublicKey().getEncoded());
@@ -76,30 +76,31 @@ class CertificateIssuerTest {
 
     @Test
     void pemCsr_accepted() throws Exception {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.pem())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(ca.certificate(), caKeys)
-                .issue();
+                .issue());
         leaf.certificate().verify(ca.certificate().getPublicKey());
     }
 
     @Test
     void policyViolation_doesNotIssue() {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.evil.com").build(leafKeys);
-        assertThrows(PolicyViolationException.class, () -> CertificateIssuer.issue()
+        IssueResult rejected = CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.httpsPolicy().dns(fromCsr().matching(".*\\.acme\\.com")).build())
                 .using(ca.certificate(), caKeys.getPrivate())
-                .issue());
+                .issue();
+        assertInstanceOf(IssueResult.Rejected.class, rejected);
     }
 
     @Test
     void mismatchedCsrSignature_rejected() throws Exception {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         ContentSigner wrong = new JcaContentSignerBuilder("SHA256withECDSA")
                 .setProvider(BouncyCastleProvider.PROVIDER_NAME)
                 .build(caKeys.getPrivate());
@@ -115,40 +116,40 @@ class CertificateIssuerTest {
 
     @Test
     void contentSigner_path() throws Exception {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         ContentSigner signer = new JcaContentSignerBuilder("SHA256withECDSA")
                 .setProvider(BouncyCastleProvider.PROVIDER_NAME)
                 .build(caKeys.getPrivate());
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(ca.certificate(), signer)
-                .issue();
+                .issue());
         leaf.certificate().verify(ca.certificate().getPublicKey());
     }
 
     @Test
     void ignoreCsr_callerOrganization() throws Exception {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         CsrResult csr = CsrBuilder.httpsCsr().commonName("app").dns("app.acme.com").build(leafKeys);
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.httpsPolicy()
                         .organization(ignoreCsr().orCaller().orDefault("Acme"))
                         .build())
                 .using(ca.certificate(), caKeys.getPrivate())
                 .caller(CallerValues.of().organization("West"))
-                .issue();
+                .issue());
         assertTrue(leaf.certificate().getSubjectX500Principal().toString().contains("West"));
     }
 
     @Test
     void customize_addsCallerConditionalExtension() throws Exception {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         var oid = new ASN1ObjectIdentifier("1.2.3.4.1");
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(ca.certificate(), caKeys.getPrivate())
@@ -158,13 +159,13 @@ class CertificateIssuerTest {
                         raw.addExtension(oid, false, new DERUTF8String(caller.attr("note")));
                     }
                 })
-                .issue();
+                .issue());
         assertNotNull(leaf.certificate().getExtensionValue(oid.getId()));
     }
 
     @Test
     void customize_duplicatePolicyOid_fails() {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
         assertThrows(IllegalArgumentException.class, () -> CertificateIssuer.issue()
                 .csr(csr.request())
@@ -177,13 +178,13 @@ class CertificateIssuerTest {
 
     @Test
     void endEntityIssuer_rejected() {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         CsrResult leafCsr = CsrBuilder.httpsCsr().dns("a.acme.com").build(leafKeys);
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(leafCsr.request())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(ca.certificate(), caKeys.getPrivate())
-                .issue();
+                .issue());
         KeyPair other = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
         CsrResult otherCsr = CsrBuilder.httpsCsr().dns("b.acme.com").build(other);
         assertThrows(IllegalArgumentException.class, () -> CertificateIssuer.issue()
@@ -195,17 +196,17 @@ class CertificateIssuerTest {
 
     @Test
     void clockAndSerial_honoured() throws Exception {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         Instant now = Instant.parse("2026-01-15T12:00:00Z");
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(ca.certificate(), caKeys.getPrivate())
                 .clock(Clock.fixed(now, ZoneOffset.UTC))
                 .backdate(Duration.ZERO)
                 .serial(BigInteger.valueOf(42))
-                .issue();
+                .issue());
         assertEquals(BigInteger.valueOf(42), leaf.certificate().getSerialNumber());
         assertEquals(now, leaf.certificate().getNotBefore().toInstant());
         assertEquals(now.plus(Duration.ofDays(90)), leaf.certificate().getNotAfter().toInstant());
@@ -213,15 +214,15 @@ class CertificateIssuerTest {
 
     @Test
     void defaultBackdate_isFiveMinutes() throws Exception {
-        IssuedCertificate ca = issueCa();
+        IssueResult.Issued ca = issueCa();
         Instant now = Instant.parse("2026-01-15T12:00:00Z");
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(ca.certificate(), caKeys.getPrivate())
                 .clock(Clock.fixed(now, ZoneOffset.UTC))
-                .issue();
+                .issue());
         assertEquals(now.minus(Duration.ofMinutes(5)), leaf.certificate().getNotBefore().toInstant());
     }
 
@@ -229,18 +230,18 @@ class CertificateIssuerTest {
     void root_intermediate_leaf_chain() throws Exception {
         KeyPair intKeys = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
 
-        IssuedCertificate root = CertificateIssuer.issue()
+        IssueResult.Issued root = issued(CertificateIssuer.issue()
                 .csr(CsrBuilder.signingCsr().commonName("Acme Root").build(caKeys).request())
                 .policy(PolicyBuilder.signingPolicy().unboundedPathLen().build())
                 .selfSigned(caKeys)
-                .issue();
+                .issue());
         assertTrue(root.certificate().getBasicConstraints() >= 0);
 
-        IssuedCertificate intermediate = CertificateIssuer.issue()
+        IssueResult.Issued intermediate = issued(CertificateIssuer.issue()
                 .csr(CsrBuilder.signingCsr().commonName("Acme Intermediate").build(intKeys).request())
                 .policy(PolicyBuilder.signingPolicy().pathLen(0).build())
                 .using(root.certificate(), caKeys.getPrivate())
-                .issue();
+                .issue());
 
         intermediate.certificate().verify(root.certificate().getPublicKey());
         assertTrue(intermediate.certificate().getBasicConstraints() >= 0);
@@ -250,11 +251,11 @@ class CertificateIssuerTest {
         assertTrue(intermediate.certificate().getIssuerX500Principal().getName().contains("Acme Root"));
         assertTrue(intermediate.certificate().getSubjectX500Principal().getName().contains("Acme Intermediate"));
 
-        IssuedCertificate leaf = CertificateIssuer.issue()
+        IssueResult.Issued leaf = issued(CertificateIssuer.issue()
                 .csr(CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys).request())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(intermediate.certificate(), intKeys.getPrivate())
-                .issue();
+                .issue());
 
         leaf.certificate().verify(intermediate.certificate().getPublicKey());
         assertFalse(leaf.certificate().getBasicConstraints() >= 0);
@@ -284,12 +285,16 @@ class CertificateIssuerTest {
         return false;
     }
 
-    private IssuedCertificate issueCa() {
+    private IssueResult.Issued issueCa() {
         var csr = CsrBuilder.signingCsr().commonName("Acme Root").build(caKeys);
-        return CertificateIssuer.issue()
+        return issued(CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.signingPolicy().build())
                 .selfSigned(caKeys)
-                .issue();
+                .issue());
+    }
+
+    private static IssueResult.Issued issued(IssueResult result) {
+        return assertInstanceOf(IssueResult.Issued.class, result);
     }
 }

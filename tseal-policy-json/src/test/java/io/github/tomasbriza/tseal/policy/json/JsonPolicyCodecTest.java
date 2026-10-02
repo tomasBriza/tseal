@@ -5,6 +5,7 @@ import io.github.tomasbriza.tseal.csr.CsrResult;
 import io.github.tomasbriza.tseal.key.KeyAlgorithm;
 import io.github.tomasbriza.tseal.key.KeyPairFactory;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
+import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.policy.PolicyBuilder;
 import io.github.tomasbriza.tseal.policy.ValidityRule;
 import io.github.tomasbriza.tseal.policy.restriction.RestrictionOutcome;
@@ -27,8 +28,8 @@ import java.util.Map;
 import static io.github.tomasbriza.tseal.policy.Rules.exactly;
 import static io.github.tomasbriza.tseal.policy.Rules.fromCsr;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -48,7 +49,7 @@ class JsonPolicyCodecTest {
         IssuancePolicy original = PolicyBuilder.httpsPolicy().build();
 
         IssuancePolicy restored = json.read(json.write(original));
-        assertDoesNotThrow(() -> restored.check(csr.request()));
+        assertInstanceOf(Evaluation.Ok.class, restored.check(csr.request()));
         assertEquals(original.snapshot(), restored.snapshot());
     }
 
@@ -56,14 +57,14 @@ class JsonPolicyCodecTest {
     void clientAuth_roundTrip() {
         CsrResult csr = CsrBuilder.clientAuthCsr().commonName("client").organization("Acme").build(kp);
         IssuancePolicy restored = json.read(json.write(PolicyBuilder.clientAuthPolicy().build()));
-        assertDoesNotThrow(() -> restored.check(csr.request()));
+        assertInstanceOf(Evaluation.Ok.class, restored.check(csr.request()));
     }
 
     @Test
     void signing_roundTrip() {
         CsrResult csr = CsrBuilder.signingCsr().commonName("CA").organization("Acme").build(kp);
         IssuancePolicy restored = json.read(json.write(PolicyBuilder.signingPolicy().build()));
-        assertDoesNotThrow(() -> restored.check(csr.request()));
+        assertInstanceOf(Evaluation.Ok.class, restored.check(csr.request()));
     }
 
     @Test
@@ -90,7 +91,7 @@ class JsonPolicyCodecTest {
         assertTrue(text.contains("http://crl.acme.com/acme.crl"));
 
         IssuancePolicy restored = json.read(text);
-        assertDoesNotThrow(() -> restored.check(csr.request()));
+        assertInstanceOf(Evaluation.Ok.class, restored.check(csr.request()));
         assertEquals(original.snapshot(), restored.snapshot());
     }
 
@@ -109,7 +110,7 @@ class JsonPolicyCodecTest {
                 .build();
 
         IssuancePolicy restored = json.read(json.write(original));
-        assertDoesNotThrow(() -> restored.check(csr.request()));
+        assertInstanceOf(Evaluation.Ok.class, restored.check(csr.request()));
         assertEquals(1, restored.snapshot().extraExtensions().size());
         assertEquals(oid.getId(), restored.snapshot().extraExtensions().getFirst().oid());
         assertEquals(original.snapshot(), restored.snapshot());
@@ -161,8 +162,8 @@ class JsonPolicyCodecTest {
         IssuancePolicy policy = json.read(jsonDoc);
         CsrResult ok = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
         CsrResult bad = CsrBuilder.httpsCsr().dns("app.evil.com").build(kp);
-        assertDoesNotThrow(() -> policy.check(ok.request()));
-        assertThrows(Exception.class, () -> policy.check(bad.request()));
+        assertInstanceOf(Evaluation.Ok.class, policy.check(ok.request()));
+        assertInstanceOf(Evaluation.Violations.class, policy.check(bad.request()));
     }
 
     @Test
@@ -178,8 +179,8 @@ class JsonPolicyCodecTest {
             IssuancePolicy restored = json.read(json.write(original));
             CsrResult ok = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
             CsrResult bad = CsrBuilder.httpsCsr().dns("nope.example.com").build(kp);
-            assertDoesNotThrow(() -> restored.check(ok.request()));
-            assertThrows(Exception.class, () -> restored.check(bad.request()));
+            assertInstanceOf(Evaluation.Ok.class, restored.check(ok.request()));
+            assertInstanceOf(Evaluation.Violations.class, restored.check(bad.request()));
             assertEquals("endsAcme", restored.snapshot().san().get("dns").restrictions().getFirst().type());
         } finally {
             RestrictionRules.unregister("endsAcme");
@@ -201,7 +202,7 @@ class JsonPolicyCodecTest {
         assertEquals("Acme West", policy.snapshot().subject().get("O").exact());
         assertTrue(policy.snapshot().san().containsKey("dns"));
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(kp);
-        assertDoesNotThrow(() -> policy.check(csr.request()));
+        assertInstanceOf(Evaluation.Ok.class, policy.check(csr.request()));
     }
 
     @Test
