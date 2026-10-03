@@ -2,6 +2,8 @@ package io.github.tomasbriza.tseal.issue;
 
 import io.github.tomasbriza.tseal.policy.CallerValues;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
+import io.github.tomasbriza.tseal.policy.PolicyViolation;
+import io.github.tomasbriza.tseal.policy.ViolationCodes;
 import io.github.tomasbriza.tseal.policy.engine.CsrView;
 
 import org.bouncycastle.operator.ContentSigner;
@@ -14,7 +16,9 @@ import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 
@@ -29,12 +33,15 @@ public final class CertificateIssueBuilder implements IssueStart, IssueWithCsr, 
     private boolean selfSigned;
     private Clock clock = Clock.systemUTC();
     private Duration backdate = Duration.ofMinutes(5);
+    private String backdateError;
     private BigInteger serial;
+    private String serialError;
+    private String keyError;
     private BiConsumer<CallerValues, RawIssuedCertificate> customizer;
 
     @Override
     public CertificateIssueBuilder csr(PKCS10CertificationRequest csr) {
-        this.csr = Objects.requireNonNull(csr, "csr");
+        this.csr = csr;
         return this;
     }
 
@@ -46,54 +53,61 @@ public final class CertificateIssueBuilder implements IssueStart, IssueWithCsr, 
 
     @Override
     public CertificateIssueBuilder policy(IssuancePolicy policy) {
-        this.policy = Objects.requireNonNull(policy, "policy");
+        this.policy = policy;
         return this;
     }
 
     @Override
     public CertificateIssueBuilder using(X509Certificate issuerCertificate, PrivateKey issuerKey) {
-        this.issuerCertificate = Objects.requireNonNull(issuerCertificate, "issuerCertificate");
-        this.issuerKey = Objects.requireNonNull(issuerKey, "issuerKey");
+        this.issuerCertificate = issuerCertificate;
+        this.issuerKey = issuerKey;
         this.explicitSigner = null;
         this.selfSigned = false;
+        this.keyError = null;
         return this;
     }
 
     @Override
     public CertificateIssueBuilder using(X509Certificate issuerCertificate, KeyPair issuerKeyPair) {
-        Objects.requireNonNull(issuerKeyPair, "issuerKeyPair");
-        requireSameKey(issuerCertificate.getPublicKey().getEncoded(), issuerKeyPair.getPublic().getEncoded(),
-                "issuer KeyPair public key does not match the issuer certificate");
-        return using(issuerCertificate, issuerKeyPair.getPrivate());
+        using(issuerCertificate, issuerKeyPair == null ? null : issuerKeyPair.getPrivate());
+        if (issuerCertificate != null && issuerKeyPair != null
+                && !Arrays.equals(issuerCertificate.getPublicKey().getEncoded(),
+                        issuerKeyPair.getPublic().getEncoded())) {
+            this.keyError = "issuer KeyPair public key does not match the issuer certificate";
+        }
+        return this;
     }
 
     @Override
     public CertificateIssueBuilder using(X509Certificate issuerCertificate, ContentSigner signer) {
-        this.issuerCertificate = Objects.requireNonNull(issuerCertificate, "issuerCertificate");
-        this.explicitSigner = Objects.requireNonNull(signer, "signer");
+        this.issuerCertificate = issuerCertificate;
+        this.explicitSigner = signer;
         this.issuerKey = null;
         this.selfSigned = false;
+        this.keyError = null;
         return this;
     }
 
     @Override
     public CertificateIssueBuilder selfSigned(PrivateKey subjectKey) {
         this.selfSigned = true;
-        this.issuerKey = Objects.requireNonNull(subjectKey, "subjectKey");
+        this.issuerKey = subjectKey;
         this.issuerCertificate = null;
         this.explicitSigner = null;
+        this.keyError = null;
         return this;
     }
 
     @Override
     public CertificateIssueBuilder selfSigned(KeyPair subjectKeyPair) {
-        Objects.requireNonNull(subjectKeyPair, "subjectKeyPair");
-        requireSameKey(csrPublicKeyEncoded(), subjectKeyPair.getPublic().getEncoded(),
-                "self-signed KeyPair public key does not match the CSR");
-        this.selfSigned = true;
-        this.issuerKey = subjectKeyPair.getPrivate();
-        this.issuerCertificate = null;
-        this.explicitSigner = null;
+        selfSigned(subjectKeyPair == null ? null : subjectKeyPair.getPrivate());
+        if (subjectKeyPair == null || csr == null) {
+            return this;
+        }
+        byte[] csrKey = csrPublicKeyEncoded();
+        if (csrKey == null || !Arrays.equals(csrKey, subjectKeyPair.getPublic().getEncoded())) {
+            this.keyError = "self-signed public key does not match the CSR";
+        }
         return this;
     }
 
@@ -112,18 +126,23 @@ public final class CertificateIssueBuilder implements IssueStart, IssueWithCsr, 
     @Override
     public CertificateIssueBuilder serial(BigInteger serial) {
         if (serial == null || serial.signum() <= 0) {
-            throw new IllegalArgumentException("serial must be a positive integer");
+            this.serial = null;
+            this.serialError = "serial must be a positive integer";
+        } else {
+            this.serial = serial;
+            this.serialError = null;
         }
-        this.serial = serial;
         return this;
     }
 
     @Override
     public CertificateIssueBuilder backdate(Duration skew) {
         if (skew == null || skew.isNegative()) {
-            throw new IllegalArgumentException("backdate must be zero or positive");
+            this.backdateError = "backdate must be zero or positive";
+        } else {
+            this.backdate = skew;
+            this.backdateError = null;
         }
-        this.backdate = skew;
         return this;
     }
 
@@ -135,22 +154,45 @@ public final class CertificateIssueBuilder implements IssueStart, IssueWithCsr, 
 
     @Override
     public IssueResult issue() {
+        List<PolicyViolation> problems = new ArrayList<>();
+        if (csr == null) {
+            problems.add(violation("csr", "csr is required", ViolationCodes.ISSUE_INPUT));
+        }
+        if (policy == null) {
+            problems.add(violation("policy", "policy is required", ViolationCodes.ISSUE_INPUT));
+        }
+        if (explicitSigner == null && issuerKey == null) {
+            problems.add(violation("signer", "issuer key or ContentSigner is required", ViolationCodes.ISSUE_INPUT));
+        }
+        if (!selfSigned && issuerCertificate == null) {
+            problems.add(violation("issuer", "issuer certificate is required", ViolationCodes.ISSUE_INPUT));
+        }
+        if (serialError != null) {
+            problems.add(violation("serial", serialError, ViolationCodes.ISSUE_INPUT));
+        }
+        if (backdateError != null) {
+            problems.add(violation("backdate", backdateError, ViolationCodes.ISSUE_INPUT));
+        }
+        if (keyError != null) {
+            problems.add(violation("publicKey", keyError, ViolationCodes.KEY_MISMATCH));
+        }
+        if (!problems.isEmpty()) {
+            return new IssueResult.Rejected(problems);
+        }
         return IssueEngine.issue(
                 csr, policy, caller, issuerCertificate, issuerKey, explicitSigner,
                 selfSigned, clock, backdate, serial, customizer);
+    }
+
+    private static PolicyViolation violation(String field, String message, String code) {
+        return new PolicyViolation(field, message, code);
     }
 
     private byte[] csrPublicKeyEncoded() {
         try {
             return new JcaPKCS10CertificationRequest(csr).getPublicKey().getEncoded();
         } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to read CSR public key", e);
-        }
-    }
-
-    private static void requireSameKey(byte[] expected, byte[] actual, String message) {
-        if (!Arrays.equals(expected, actual)) {
-            throw new IllegalArgumentException(message);
+            return null;
         }
     }
 }

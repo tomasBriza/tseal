@@ -87,7 +87,7 @@ Overloads: `check(PKCS10CertificationRequest)`, `check(PKCS10CertificationReques
 
 `Evaluation.Ok(subject, san, validity, keyUsageBits, extensions)`. `Evaluation.Violations(violations)`. `Ok.keyUsage()` wraps `keyUsageBits` in `KeyUsage`, or null. A policy miss does not throw. Blank PEM, a non-CSR PEM, and a null CSR throw `IllegalArgumentException`.
 
-`PolicyViolation(field, message, code)`. `field`: `subject.CN`, `subject.O`, `subject.C`, `san.dNSName`, `san.iPAddress`, `extension.request.<oid>`, `unknown.subject.<oid>`, `validity`. `code` is `ViolationCodes` (`value.regex`, `san.unknown`, …).
+`PolicyViolation(field, message, code)`. `field`: `subject.CN`, `subject.O`, `subject.C`, `san.dNSName`, `san.iPAddress`, `extension.request.<oid>`, `unknown.subject.<oid>`, `validity`. `code` is `ViolationCodes` (`value.regex`, `san.unknown`, …). `issue()` returns that same list as `IssueResult.Rejected`, and also `csr.signature`, `issuer.notCa`, `key.mismatch`, `issue.input`, `issue.failed`. See [issue/readme.md](../issue/readme.md).
 
 `check` does not allocate serial, issuer, SKI, AKI, or a signature, and does not verify the CSR signature.
 

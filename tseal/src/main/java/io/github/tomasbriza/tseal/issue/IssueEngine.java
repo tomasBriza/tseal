@@ -3,6 +3,8 @@ package io.github.tomasbriza.tseal.issue;
 import io.github.tomasbriza.tseal.policy.CallerValues;
 import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
+import io.github.tomasbriza.tseal.policy.PolicyViolation;
+import io.github.tomasbriza.tseal.policy.ViolationCodes;
 
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
@@ -40,6 +42,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.function.BiConsumer;
 
 public final class IssueEngine {
@@ -66,35 +69,51 @@ public final class IssueEngine {
             BigInteger serial,
             BiConsumer<CallerValues, RawIssuedCertificate> customizer) {
         if (csr == null) {
-            throw new IllegalArgumentException("csr is required");
+            return rejected("csr", "csr is required", ViolationCodes.ISSUE_INPUT);
         }
         if (policy == null) {
-            throw new IllegalArgumentException("policy is required");
+            return rejected("policy", "policy is required", ViolationCodes.ISSUE_INPUT);
         }
         if (explicitSigner == null && issuerKey == null) {
-            throw new IllegalStateException("issuer key or ContentSigner is required");
+            return rejected("signer", "issuer key or ContentSigner is required", ViolationCodes.ISSUE_INPUT);
         }
         if (!selfSigned && issuerCertificate == null) {
-            throw new IllegalStateException("issuer certificate is required");
+            return rejected("issuer", "issuer certificate is required", ViolationCodes.ISSUE_INPUT);
         }
-        verifyCsrSignature(csr);
+        if (backdate == null || backdate.isNegative()) {
+            return rejected("backdate", "backdate must be zero or positive", ViolationCodes.ISSUE_INPUT);
+        }
+        if (serial != null && serial.signum() <= 0) {
+            return rejected("serial", "serial must be a positive integer", ViolationCodes.ISSUE_INPUT);
+        }
+        IssueResult.Rejected signature = verifyCsrSignature(csr);
+        if (signature != null) {
+            return signature;
+        }
         CallerValues values = caller == null ? CallerValues.empty() : caller;
         switch (policy.check(csr, values)) {
             case Evaluation.Violations rejected -> {
                 return new IssueResult.Rejected(rejected.violations());
             }
             case Evaluation.Ok evaluation -> {
-                if (!selfSigned) {
-                    requireCaIssuer(issuerCertificate);
+                if (!selfSigned && issuerCertificate.getBasicConstraints() < 0) {
+                    return rejected("issuer.basicConstraints", "issuer certificate is not a CA",
+                            ViolationCodes.ISSUER_NOT_CA);
                 }
 
                 PublicKey subjectPublicKey = subjectPublicKey(csr);
+                if (subjectPublicKey == null) {
+                    return rejected("csr.publicKey", "Failed to read CSR public key", ViolationCodes.ISSUE_FAILED);
+                }
                 Instant notBefore = clock.instant().minus(backdate);
                 Instant notAfter = notBefore.plus(evaluation.validity());
                 BigInteger serialNumber = serial != null ? serial : randomSerial();
                 X500Name issuerName = selfSigned
                         ? evaluation.subject()
                         : issuerName(issuerCertificate);
+                if (issuerName == null) {
+                    return rejected("issuer.subject", "Failed to read issuer certificate", ViolationCodes.ISSUE_FAILED);
+                }
 
                 try {
                     X509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
@@ -120,31 +139,34 @@ public final class IssueEngine {
                             .getCertificate(holder);
                     return new IssueResult.Issued(certificate, toPem(certificate));
                 } catch (OperatorCreationException | CertificateException | IOException e) {
-                    throw new IllegalStateException("Certificate issuance failed", e);
+                    String detail = e.getMessage();
+                    String message = detail == null || detail.isBlank()
+                            ? "Certificate issuance failed"
+                            : "Certificate issuance failed: " + detail;
+                    return rejected("issue", message, ViolationCodes.ISSUE_FAILED);
                 }
             }
         }
     }
 
-    private static void verifyCsrSignature(PKCS10CertificationRequest csr) {
+    private static IssueResult.Rejected rejected(String field, String message, String code) {
+        return new IssueResult.Rejected(List.of(new PolicyViolation(field, message, code)));
+    }
+
+    private static IssueResult.Rejected verifyCsrSignature(PKCS10CertificationRequest csr) {
         try {
             boolean valid = csr.isSignatureValid(
                     new JcaContentVerifierProviderBuilder()
                             .setProvider(BouncyCastleProvider.PROVIDER_NAME)
                             .build(csr.getSubjectPublicKeyInfo()));
             if (!valid) {
-                throw new IllegalArgumentException("CSR signature is invalid");
+                return rejected("csr.signature", "CSR signature is invalid", ViolationCodes.CSR_SIGNATURE);
             }
+            return null;
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new IllegalArgumentException("CSR signature is invalid", e);
-        }
-    }
-
-    private static void requireCaIssuer(X509Certificate issuerCertificate) {
-        if (issuerCertificate.getBasicConstraints() < 0) {
-            throw new IllegalArgumentException("issuer certificate is not a CA");
+            return rejected("csr.signature", "CSR signature is invalid", ViolationCodes.CSR_SIGNATURE);
         }
     }
 
@@ -152,7 +174,7 @@ public final class IssueEngine {
         try {
             return new JcaPKCS10CertificationRequest(csr).getPublicKey();
         } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to read CSR public key", e);
+            return null;
         }
     }
 
@@ -160,7 +182,7 @@ public final class IssueEngine {
         try {
             return new JcaX509CertificateHolder(issuerCertificate).getSubject();
         } catch (CertificateException e) {
-            throw new IllegalArgumentException("Failed to read issuer certificate", e);
+            return null;
         }
     }
 
@@ -188,7 +210,7 @@ public final class IssueEngine {
                     : utils.createAuthorityKeyIdentifier(new JcaX509CertificateHolder(issuerCertificate));
             builder.addExtension(Extension.authorityKeyIdentifier, false, aki);
         } catch (java.security.NoSuchAlgorithmException | CertificateException e) {
-            throw new IllegalStateException("Failed to create key identifiers", e);
+            throw new IOException("Failed to create key identifiers", e);
         }
     }
 
@@ -199,7 +221,7 @@ public final class IssueEngine {
                 .build(privateKey);
     }
 
-    private static String deriveAlgorithm(PublicKey publicKey) {
+    private static String deriveAlgorithm(PublicKey publicKey) throws OperatorCreationException {
         return switch (publicKey.getAlgorithm()) {
             case "RSA" -> "SHA256withRSA";
             case "EC" -> {
@@ -213,7 +235,7 @@ public final class IssueEngine {
             }
             case "Ed25519" -> "Ed25519";
             case "Ed448" -> "Ed448";
-            default -> throw new IllegalArgumentException("Unsupported key type: " + publicKey.getAlgorithm());
+            default -> throw new OperatorCreationException("Unsupported key type: " + publicKey.getAlgorithm());
         };
     }
 

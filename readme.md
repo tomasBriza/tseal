@@ -5,7 +5,7 @@
 
 A small Java PKI library wrapping Bouncy Castle. BC is the crypto engine; tSeal is a hard-to-misuse issuance API, not a replacement for calling BC yourself or for running a CA (EJBCA, Boulder, …).
 
-**Policy is data.** An `IssuancePolicy` is a value you can `check(csr)` without a CA key, snapshot, serialize to JSON, and compose with `extends`. Signing consumes that same policy. It is not the X.509 CertificatePolicies extension. `check` returns `Evaluation.Ok` or `Evaluation.Violations`. `issue()` returns `IssueResult.Issued` or `IssueResult.Rejected`. A bad CSR signature, a non-CA issuer, or a signer failure still throws.
+**Policy is data.** An `IssuancePolicy` is a value you can `check(csr)` without a CA key, snapshot, serialize to JSON, and compose with `extends`. Signing consumes that same policy. It is not the X.509 CertificatePolicies extension. `check` returns `Evaluation.Ok` or `Evaluation.Violations`. `issue()` returns `IssueResult.Issued` or `IssueResult.Rejected`. A bad CSR signature, a non-CA issuer, or a signer failure is `Rejected`.
 
 **Currently implemented:** PKCS#10 CSR builder, issuance policy, certificate issuance —
 TLS server, client auth, and signing-CA presets, plus a custom DSL and escape hatches.

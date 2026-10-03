@@ -4,7 +4,7 @@ import io.github.tomasbriza.tseal.policy.IssuancePolicy;
 
 /**
  * Issues an X.509 certificate from a CSR and an {@link IssuancePolicy}.
- * Policy evaluation is internal; the public surface is the type-state builder.
+ * {@code issue()} returns {@link IssueResult.Issued} or {@link IssueResult.Rejected}.
  */
 public final class CertificateIssuer {
 

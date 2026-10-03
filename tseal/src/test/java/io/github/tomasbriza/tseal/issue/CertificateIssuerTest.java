@@ -7,6 +7,7 @@ import io.github.tomasbriza.tseal.key.KeyPairFactory;
 import io.github.tomasbriza.tseal.policy.CallerValues;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
 import io.github.tomasbriza.tseal.policy.PolicyBuilder;
+import io.github.tomasbriza.tseal.policy.ViolationCodes;
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERUTF8String;
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -107,11 +109,12 @@ class CertificateIssuerTest {
         var csr = CsrBuilder.httpsCsr()
                 .dns("app.acme.com")
                 .build(leafKeys.getPublic(), wrong);
-        assertThrows(IllegalArgumentException.class, () -> CertificateIssuer.issue()
+        IssueResult.Rejected rejected = assertInstanceOf(IssueResult.Rejected.class, CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(ca.certificate(), caKeys.getPrivate())
                 .issue());
+        assertEquals(ViolationCodes.CSR_SIGNATURE, rejected.violations().getFirst().code());
     }
 
     @Test
@@ -130,7 +133,7 @@ class CertificateIssuerTest {
     }
 
     @Test
-    void ignoreCsr_callerOrganization() throws Exception {
+    void ignoreCsr_callerOrganization() {
         IssueResult.Issued ca = issueCa();
         CsrResult csr = CsrBuilder.httpsCsr().commonName("app").dns("app.acme.com").build(leafKeys);
         IssueResult.Issued leaf = issued(CertificateIssuer.issue()
@@ -145,7 +148,7 @@ class CertificateIssuerTest {
     }
 
     @Test
-    void customize_addsCallerConditionalExtension() throws Exception {
+    void customize_addsCallerConditionalExtension() {
         IssueResult.Issued ca = issueCa();
         var oid = new ASN1ObjectIdentifier("1.2.3.4.1");
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
@@ -187,15 +190,16 @@ class CertificateIssuerTest {
                 .issue());
         KeyPair other = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
         CsrResult otherCsr = CsrBuilder.httpsCsr().dns("b.acme.com").build(other);
-        assertThrows(IllegalArgumentException.class, () -> CertificateIssuer.issue()
+        IssueResult.Rejected rejected = assertInstanceOf(IssueResult.Rejected.class, CertificateIssuer.issue()
                 .csr(otherCsr.request())
                 .policy(PolicyBuilder.httpsPolicy().build())
                 .using(leaf.certificate(), leafKeys.getPrivate())
                 .issue());
+        assertEquals(ViolationCodes.ISSUER_NOT_CA, rejected.violations().getFirst().code());
     }
 
     @Test
-    void clockAndSerial_honoured() throws Exception {
+    void clockAndSerial_honoured() {
         IssueResult.Issued ca = issueCa();
         Instant now = Instant.parse("2026-01-15T12:00:00Z");
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
@@ -213,7 +217,7 @@ class CertificateIssuerTest {
     }
 
     @Test
-    void defaultBackdate_isFiveMinutes() throws Exception {
+    void defaultBackdate_isFiveMinutes() {
         IssueResult.Issued ca = issueCa();
         Instant now = Instant.parse("2026-01-15T12:00:00Z");
         CsrResult csr = CsrBuilder.httpsCsr().dns("app.acme.com").build(leafKeys);
@@ -246,8 +250,7 @@ class CertificateIssuerTest {
         intermediate.certificate().verify(root.certificate().getPublicKey());
         assertTrue(intermediate.certificate().getBasicConstraints() >= 0);
         assertEquals(0, intermediate.certificate().getBasicConstraints());
-        assertFalse(intermediate.certificate().getIssuerX500Principal().equals(
-                intermediate.certificate().getSubjectX500Principal()));
+        assertNotEquals(intermediate.certificate().getIssuerX500Principal(), intermediate.certificate().getSubjectX500Principal());
         assertTrue(intermediate.certificate().getIssuerX500Principal().getName().contains("Acme Root"));
         assertTrue(intermediate.certificate().getSubjectX500Principal().getName().contains("Acme Intermediate"));
 
@@ -266,10 +269,44 @@ class CertificateIssuerTest {
     void selfSignedKeyPair_mustMatchCsr() {
         KeyPair other = KeyPairFactory.generate(KeyAlgorithm.EC_P256);
         var csr = CsrBuilder.signingCsr().commonName("Acme Root").build(caKeys);
-        assertThrows(IllegalArgumentException.class, () -> CertificateIssuer.issue()
+        IssueResult.Rejected rejected = assertInstanceOf(IssueResult.Rejected.class, CertificateIssuer.issue()
                 .csr(csr.request())
                 .policy(PolicyBuilder.signingPolicy().build())
-                .selfSigned(other));
+                .selfSigned(other)
+                .issue());
+        assertEquals(ViolationCodes.KEY_MISMATCH, rejected.violations().getFirst().code());
+    }
+
+    @Test
+    void missingPolicy_rejected() {
+        var csr = CsrBuilder.signingCsr().commonName("Acme Root").build(caKeys);
+        IssueResult.Rejected rejected = assertInstanceOf(IssueResult.Rejected.class, CertificateIssuer.issue()
+                .csr(csr.request())
+                .policy(null)
+                .selfSigned(caKeys)
+                .issue());
+        assertEquals(ViolationCodes.ISSUE_INPUT, rejected.violations().getFirst().code());
+        assertEquals("policy", rejected.violations().getFirst().field());
+    }
+
+    @Test
+    void negativeBackdateAndSerial_rejected() {
+        var csr = CsrBuilder.signingCsr().commonName("Acme Root").build(caKeys);
+        IssueResult.Rejected backdate = assertInstanceOf(IssueResult.Rejected.class, CertificateIssuer.issue()
+                .csr(csr.request())
+                .policy(PolicyBuilder.signingPolicy().build())
+                .selfSigned(caKeys)
+                .backdate(Duration.ofMinutes(-1))
+                .issue());
+        assertEquals("backdate", backdate.violations().getFirst().field());
+
+        IssueResult.Rejected serial = assertInstanceOf(IssueResult.Rejected.class, CertificateIssuer.issue()
+                .csr(csr.request())
+                .policy(PolicyBuilder.signingPolicy().build())
+                .selfSigned(caKeys)
+                .serial(BigInteger.ZERO)
+                .issue());
+        assertEquals("serial", serial.violations().getFirst().field());
     }
 
     private static boolean hasDnsSan(X509Certificate certificate, String dns) throws Exception {

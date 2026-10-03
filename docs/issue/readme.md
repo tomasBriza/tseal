@@ -2,19 +2,18 @@
 
 `CertificateIssuer` in `io.github.tomasbriza.tseal.issue`. One CSR plus one `IssuancePolicy` becomes one certificate.
 
-`issue()` returns `IssueResult.Issued(X509Certificate certificate, String pem)` or `IssueResult.Rejected(List<PolicyViolation>)`. `Rejected` is the same violation list as `Evaluation.Violations`. Nothing is signed.
+`issue()` returns `IssueResult.Issued(X509Certificate certificate, String pem)` or `IssueResult.Rejected(List<PolicyViolation>)`. Nothing is signed.
 
-Throws, not a result:
-Note: this could change in future and in those case return also Rejected result
+`Rejected` is a policy miss (`Evaluation.Violations`, same list) or one of these. `code` is from `ViolationCodes`.
 
-| Condition                                      | Exception                  |
-|------------------------------------------------|----------------------------|
-| CSR signature invalid                          | `IllegalArgumentException` |
-| `using` an end-entity (`basicConstraints < 0`) | `IllegalArgumentException` |
-| `selfSigned` public key ≠ CSR public key       | `IllegalArgumentException` |
-| null CSR, policy, or signer material           | `IllegalArgumentException` |
-| negative backdate, non-positive serial         | `IllegalArgumentException` |
-| signer creation, cert conversion, PEM          | `IllegalStateException`    |
+| Condition                                                        | `code`          |
+|------------------------------------------------------------------|-----------------|
+| CSR signature invalid                                            | `csr.signature` |
+| `using` an end-entity (`basicConstraints < 0`)                   | `issuer.notCa`  |
+| `selfSigned` or `using(cert, keyPair)` public key does not match | `key.mismatch`  |
+| null CSR, policy, or signer material                             | `issue.input`   |
+| negative backdate, non-positive serial                           | `issue.input`   |
+| signer creation, cert conversion, PEM, key identifiers           | `issue.failed`  |
 
 `check` does not verify the CSR signature. `issue` does, before policy evaluation.
 
@@ -24,7 +23,7 @@ Note: this could change in future and in those case return also Rejected result
 
 After the issuer is chosen, `IssueBuildable` has `caller`, `clock`, `serial`, `backdate`, `customize`.
 
-`using(X509Certificate, PrivateKey)`. `using(X509Certificate, KeyPair)` requires the public key to match the certificate. `using(X509Certificate, ContentSigner)`. `selfSigned(KeyPair)`. `selfSigned(PrivateKey)` uses the CSR public key.
+`using(X509Certificate, PrivateKey)`. `using(X509Certificate, KeyPair)`: a public key that does not match the certificate is `Rejected` with `key.mismatch`. `using(X509Certificate, ContentSigner)`. `selfSigned(KeyPair)`: a public key that does not match the CSR is the same code. `selfSigned(PrivateKey)` uses the CSR public key.
 
 `IssueEngine` order: verify CSR signature, `policy.check`, non-CA check (skipped when self-signed), build X.509v3 from `Evaluation.Ok`, `customize`, SKI/AKI, sign.
 
@@ -41,15 +40,15 @@ An intermediate is `signingPolicy()` plus `using(parent, parentKey)`. `httpsPoli
 | Knob | Default | Rule |
 |---|---|---|
 | `clock` | `Clock.systemUTC()` | `notBefore = clock.instant() - backdate` |
-| `backdate` | 5 minutes | `>= 0`. Not a policy field. |
-| `serial` | 128-bit `SecureRandom`, high bit cleared | positive `BigInteger` if set |
+| `backdate` | 5 minutes | Negative or null is `Rejected`, code `issue.input`. Not a policy field. |
+| `serial` | 128-bit `SecureRandom`, high bit cleared | Non-positive is `Rejected`, code `issue.input`. |
 | validity | policy result | `notAfter = notBefore + Evaluation.Ok.validity()`. Min/max already rejected in `check`. |
 
 `CallerValues` is the same object as `IssuancePolicy.check`. `attr(name, value)` is only for `customize`, not for `FieldRule`.
 
 `ContentSigner` skips algorithm derivation and does not need the CA private key in process. The issuer certificate is still required (name, AKI, CA check). Algorithm otherwise follows the **signing** public key, same table as [the CSR builder](../csr/readme.md#keys). Self-signed uses the subject key; CA-signed uses the issuer key.
 
-`customize` runs after policy extensions and before SKI/AKI. `RawIssuedCertificate.addExtension` fails if the OID is already present (Bouncy Castle rejects the second `addExtension`). Adding SKI or AKI yourself fails when the engine adds them.
+`customize` runs after policy extensions and before SKI/AKI. `RawIssuedCertificate.addExtension` still throws `IllegalArgumentException` when the OID is already present. Adding SKI or AKI yourself fails the same way when the engine adds them.
 
 ## Certificate fields
 

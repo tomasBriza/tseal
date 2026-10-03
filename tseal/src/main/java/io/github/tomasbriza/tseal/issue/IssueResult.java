@@ -7,8 +7,8 @@ import java.util.List;
 
 /**
  * Outcome of {@code issue()}.
- * {@link Issued} is the certificate. {@link Rejected} is a policy miss.
- * A bad CSR signature, a non-CA issuer, or a signer failure still throws.
+ * {@link Issued} is the certificate. {@link Rejected} is a policy miss or an issuance failure
+ * (bad CSR signature, non-CA issuer, missing input, signer or encoding failure).
  */
 public sealed interface IssueResult permits IssueResult.Issued, IssueResult.Rejected {
 

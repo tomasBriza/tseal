@@ -1,6 +1,6 @@
 # Security Policy
 
-This library is a `0.1.0-SNAPSHOT`. There is no supported stable release yet. Report
+Maven Central `0.1.0` is the published jar. `main` may be ahead of it. Report
 issues anyway — issuance bugs are security bugs.
 
 ## Reporting a vulnerability

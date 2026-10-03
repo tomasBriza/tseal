@@ -2,7 +2,7 @@
 
 Bouncy Castle is the crypto engine. tSeal is the issuance API: PKCS#10, an issuance policy, and one certificate. It is not a CA and not a second path-building stack.
 
-Policy is data. `IssuancePolicy.check` does not need a CA key. The same object is what `CertificateIssuer` evaluates. JSON is optional (`:tseal-policy-json`).
+Policy is data. `IssuancePolicy.check` returns `Evaluation` and does not need a CA key. `CertificateIssuer.issue` returns `IssueResult`: `Issued`, or `Rejected` for a policy miss, a bad CSR signature, a non-CA issuer, or a signer failure. JSON is optional (`:tseal-policy-json`).
 
 ## Status
 

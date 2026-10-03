@@ -28,5 +28,11 @@ public final class ViolationCodes {
     public static final String EXTENSION_REQUIRED = "extension.required";
     public static final String EXTENSION = "extension";
 
+    public static final String CSR_SIGNATURE = "csr.signature";
+    public static final String ISSUER_NOT_CA = "issuer.notCa";
+    public static final String KEY_MISMATCH = "key.mismatch";
+    public static final String ISSUE_INPUT = "issue.input";
+    public static final String ISSUE_FAILED = "issue.failed";
+
     private ViolationCodes() {}
 }
