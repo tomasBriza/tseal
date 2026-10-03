@@ -3,6 +3,8 @@
 Maven Central `0.1.0` is the published jar. `main` may be ahead of it. Report
 issues anyway — issuance bugs are security bugs.
 
+A bad CSR signature, a non-CA issuer, or a signer failure is `Rejected`.
+
 ## Reporting a vulnerability
 
 Use [GitHub private vulnerability reporting](https://github.com/tomasBriza/tseal/security/advisories/new)

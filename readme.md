@@ -11,7 +11,7 @@ A small Java PKI library wrapping Bouncy Castle. BC is the crypto engine; tSeal 
 TLS server, client auth, and signing-CA presets, plus a custom DSL and escape hatches.
 Java 21. Apache-2.0.
 
-**Planned:** certificate validation (JCA `CertPathValidator` / PKIX), CRL, OCSP. If required 
+**Planned:** certificate validation (JCA `CertPathValidator` / PKIX), CRL, OCSP.
 
 ## What this library does not do
 
@@ -45,6 +45,8 @@ dependencies {
     implementation("io.github.tomasbriza:tseal-policy-json:0.1.0") // optional
 }
 ```
+
+`./gradlew :examples:run`, then `openssl verify -CAfile root.pem leaf.pem`.
 
 - [Motivation and roadmap](docs/motivation.md)
 - [CSR builder API](docs/csr/readme.md)
