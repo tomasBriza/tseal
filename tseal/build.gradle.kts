@@ -1,3 +1,7 @@
+plugins {
+    id("com.vanniktech.maven.publish")
+}
+
 description = "Fluent Java PKI library wrapping Bouncy Castle"
 
 dependencies {

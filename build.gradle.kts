@@ -12,7 +12,6 @@ allprojects {
 
 subprojects {
     apply(plugin = "java-library")
-    apply(plugin = "com.vanniktech.maven.publish")
 
     extensions.configure<JavaPluginExtension> {
         toolchain {
@@ -33,34 +32,36 @@ subprojects {
         (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
     }
 
-    extensions.configure<MavenPublishBaseExtension> {
-        publishToMavenCentral()
-        if (providers.gradleProperty("signingInMemoryKey").isPresent
-                || providers.gradleProperty("signing.secretKeyRingFile").isPresent) {
-            signAllPublications()
-        }
-        pom {
-            name.set(project.name)
-            description.set(provider { project.description })
-            url.set("https://github.com/tomasBriza/tseal")
-            licenses {
-                license {
-                    name.set("Apache License, Version 2.0")
-                    url.set("https://www.apache.org/licenses/LICENSE-2.0")
-                    distribution.set("repo")
-                }
+    pluginManager.withPlugin("com.vanniktech.maven.publish") {
+        extensions.configure<MavenPublishBaseExtension> {
+            publishToMavenCentral()
+            if (providers.gradleProperty("signingInMemoryKey").isPresent
+                    || providers.gradleProperty("signing.secretKeyRingFile").isPresent) {
+                signAllPublications()
             }
-            developers {
-                developer {
-                    id.set("tomasBriza")
-                    name.set("Tomas Briza")
-                    url.set("https://github.com/tomasBriza")
-                }
-            }
-            scm {
-                connection.set("scm:git:https://github.com/tomasBriza/tseal.git")
-                developerConnection.set("scm:git:ssh://git@github.com/tomasBriza/tseal.git")
+            pom {
+                name.set(project.name)
+                description.set(provider { project.description })
                 url.set("https://github.com/tomasBriza/tseal")
+                licenses {
+                    license {
+                        name.set("Apache License, Version 2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                        distribution.set("repo")
+                    }
+                }
+                developers {
+                    developer {
+                        id.set("tomasBriza")
+                        name.set("Tomas Briza")
+                        url.set("https://github.com/tomasBriza")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:https://github.com/tomasBriza/tseal.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/tomasBriza/tseal.git")
+                    url.set("https://github.com/tomasBriza/tseal")
+                }
             }
         }
     }

@@ -1,3 +1,7 @@
+plugins {
+    id("com.vanniktech.maven.publish")
+}
+
 description = "JSON codec for tSeal IssuancePolicy"
 
 dependencies {
