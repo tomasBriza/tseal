@@ -35,7 +35,7 @@ See [SECURITY.md](SECURITY.md).
 
 | Artifact                                 | Gradle               | Contents                                                                |
 |------------------------------------------|----------------------|-------------------------------------------------------------------------|
-| `io.github.tomasbriza:tseal`             | `:tseal`             | CSR builder, issuance policy, certificate issuance (Bouncy Castle only) |
+| `io.github.tomasbriza:tseal`             | `:tseal`             | CSR builder, issuance policy, certificate issuance, PEM                 |
 | `io.github.tomasbriza:tseal-policy-json` | `:tseal-policy-json` | JSON codec for `IssuancePolicy` (Jackson)                               |
 
 Maven Central:
@@ -43,8 +43,8 @@ Maven Central:
 ```kotlin
 repositories { mavenCentral() }
 dependencies {
-    implementation("io.github.tomasbriza:tseal:0.1.0")
-    implementation("io.github.tomasbriza:tseal-policy-json:0.1.0") // optional
+    implementation("io.github.tomasbriza:tseal:0.2.1")
+    implementation("io.github.tomasbriza:tseal-policy-json:0.2.1") // optional
 }
 ```
 
