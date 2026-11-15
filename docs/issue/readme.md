@@ -65,4 +65,4 @@ An intermediate is `signingPolicy()` plus `using(parent, parentKey)`. `httpsPoli
 | SKI, AKI                        | always, after customize                                       |
 | Signature                       | CA key or `ContentSigner`                                     |
 
-Out of scope: PKCS#11 login, PEM bundles, chain validation, CRL/OCSP generation, typed name constraints or X.509 CertificatePolicies (use `customize` or `RawPolicy`).
+Out of scope: PKCS#11 login, chain validation, CRL/OCSP generation, typed name constraints or X.509 CertificatePolicies (use `customize` or `RawPolicy`). A chain PEM is `Certificates.writeChain` and is not validated.

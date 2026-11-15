@@ -6,6 +6,7 @@ import io.github.tomasbriza.tseal.issue.CertificateIssuer;
 import io.github.tomasbriza.tseal.issue.IssueResult;
 import io.github.tomasbriza.tseal.key.KeyAlgorithm;
 import io.github.tomasbriza.tseal.key.KeyPairFactory;
+import io.github.tomasbriza.tseal.pem.Certificates;
 import io.github.tomasbriza.tseal.policy.Evaluation;
 import io.github.tomasbriza.tseal.policy.IssuancePolicy;
 import io.github.tomasbriza.tseal.policy.PolicyBuilder;
@@ -70,9 +71,9 @@ public final class IssueHttpsCert {
             case IssueResult.Issued l -> l;
         };
 
-        Files.writeString(out.resolve("root.pem"), ca.pem());
-        Files.writeString(out.resolve("leaf.pem"), leaf.pem());
-        Files.writeString(out.resolve("fullchain.pem"), leaf.pem() + ca.pem());
+        Certificates.write(ca.certificate(), out.resolve("root.pem"));
+        Certificates.write(leaf.certificate(), out.resolve("leaf.pem"));
+        Certificates.writeChain(List.of(leaf.certificate(), ca.certificate()), out.resolve("fullchain.pem"));
         Files.writeString(out.resolve("app.csr.pem"), csr.pem());
 
         PolicyCodec json = new JsonPolicyCodec();

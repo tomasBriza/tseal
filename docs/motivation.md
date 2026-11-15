@@ -11,6 +11,7 @@ Policy is data. `IssuancePolicy.check` returns `Evaluation` and does not need a 
 | CSR             | `io.github.tomasbriza.tseal.csr`    | done — [csr/readme.md](csr/readme.md)       |
 | Issuance policy | `io.github.tomasbriza.tseal.policy` | done — [policy/readme.md](policy/readme.md) |
 | Issue           | `io.github.tomasbriza.tseal.issue`  | done — [issue/readme.md](issue/readme.md)   |
+| PEM             | `io.github.tomasbriza.tseal.pem`    | done — [pem/readme.md](pem/readme.md)       |
 | Validation      | JCA `CertPathValidator` / PKIX      | planned                                     |
 | CRL             | —                                   | planned                                     |
 | OCSP            | —                                   | planned                                     |

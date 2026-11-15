@@ -9,6 +9,7 @@ A small Java PKI library wrapping Bouncy Castle. BC is the crypto engine; tSeal 
 
 **Currently implemented:** PKCS#10 CSR builder, issuance policy, certificate issuance —
 TLS server, client auth, and signing-CA presets, plus a custom DSL and escape hatches.
+PEM read and write for a certificate, a certificate chain, a public key, or a private key.
 Java 21. Apache-2.0.
 
 **Planned:** certificate validation (JCA `CertPathValidator` / PKIX), CRL, OCSP.
@@ -23,7 +24,8 @@ tSeal issues certificates in-process from a CSR and a policy. It is not a CA.
 - **`check` does not verify CSR proof-of-possession.** Issuance does.
 - **No chain validation, name constraints, or revocation.** A just-issued cert is not
   “trusted”; Phase 2 will sit on `CertPathValidator` / PKIX, not a custom path builder.
-- **No PEM bundle.** `IssueResult.Issued` is one cert. Assemble `[leaf, …, root]` yourself.
+  `IssueResult.Issued` is one cert. `Certificates.writeChain` writes `[leaf, …, root]`
+  in the order given and does not check that they chain.
 - **Policy is not a threat model.** A JSON document does not replace operational CA
   security, CT, or pinning.
 
@@ -53,6 +55,7 @@ dependencies {
 - [Issuance policy API](docs/policy/readme.md)
 - [Certificate issuance API](docs/issue/readme.md)
 - [Java KeyStore](docs/keystore/readme.md)
+- [PEM files](docs/pem/readme.md)
 - [Policy JSON serialization](docs/policy/serde.md)
 
 Boilerplate and first-pass docs are from AI; the issuance model, fail-closed rules, and threat boundary are mine.
